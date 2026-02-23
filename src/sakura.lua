@@ -1,10 +1,9 @@
---[[pod_format="raw",created="2026-01-22 10:20:50",modified="2026-02-23 19:18:38",revision=931]]
+--[[pod_format="raw",created="2026-01-22 10:20:50",modified="2026-02-25 11:02:04",revision=1091]]
 include "math.lua"
 include "genLeaves.lua"
 
-leafPalette = {14,23,7}
-
-leaf_noise_strength = 12
+leaf_noise_strength = 8
+leaf_noise_sprite_strength = 2.5
 grass_noise_strength = 3
 grass_noise_bias = 2.5
 noise_scale_leaves = 4
@@ -27,7 +26,10 @@ function _init()
 	spr(8,0,0)
 	
 	if not regen then
-		leaf_data = unpod(fetch("assets/leafdata.pod")):convert("f64")
+		leaf_data,leaf_meta = unpod(fetch("assets/leafdata.pod"))
+		leaf_data = leaf_data:convert("f64")
+		fg_leaves = leaf_meta.fgLeaves
+		bg_leaves = leaf_meta.bgLeaves
 		
 		grass_data = unpod(fetch("assets/grass_data.pod")):convert("f64")
 		grass_data:mul(1/screen_to_i16,true,
@@ -70,25 +72,26 @@ function _init()
 						leaf_data:width(),
 						leaf_data:height())
 		
-		leaf_data:mul(1/i16MAX,true,
-						5, --source offset
-						5, --dest offset
-						2, --length
-						leaf_data:width(),
-						leaf_data:width(),
-						leaf_data:height())
-		
-		
 		leaf_pos = userdata("f64",2,leaf_data:height())
 		leaf_data:blit(leaf_pos,
 							1,0, --src x,y
 							0,0, --dst x,y
 							2,leaf_data:height())
 							
-		leaf_pos:mul(1/noise_scale_leaves,leaf_pos)
+		leaf_pos:mul(1/noise_scale_leaves,true)
 		
 		leaf_pos = leaf_pos:convert("i32")
-		leaf_pos:mod(noise_w,leaf_pos)
+		leaf_pos:mod(noise_w,true)
+		
+		leaf_vec = userdata("f64",2,leaf_data:height())
+		
+		for i=0,leaf_data:height()-1 do
+			local angle =leaf_data:get(3,i)/i16MAX
+			
+			leaf_vec:set(0,i,
+							cos(angle),
+							sin(angle))
+		end
 		
 		leaf_noise_ids = userdata("i32",1,leaf_pos:height())
 		leaf_noise_idx = userdata("i32",1,leaf_pos:height())
@@ -107,7 +110,7 @@ function _init()
 		leaf_noise_ids:mul(noise_w,true)
 		leaf_noise_ids:add(leaf_noise_idx,true)
 						
-		leaves = leaf_data:copy()
+		leaves = userdata("f64",3,leaf_data:height())
 		
 		grass_noise_idx = userdata("f64",1,grass_data:height())
 		grass_noise_ids = userdata("f64",1,grass_data:height())
@@ -147,22 +150,25 @@ end
 function generate()
 	cls()
 	spr(9,0,0)
-	leafTable = generateLeaves{kernelSizeX=2,kernelSizeY=2,
-											leafSize=1,iterations=1,
-											positionRandom=6,
-											windAngle=0.05, angleRandom=0.25}
-	leaf_data = userdata("i16",7,#leafTable)
+	leafTable,foregroundLeaves,backgroundLeaves = generateLeaves{kernelSizeX=2,
+																kernelSizeY=1.9,
+																leafSize=1,iterations=1,
+																positionRandom=6,
+																windAngle=0.1,
+																angleRandom=0.125,
+																foregroundPercent = 0.5}
+	leaf_data = userdata("i16",5,#leafTable)
 	for index,leaf in pairs(leafTable) do
+		local sprite = 25 + ((leaf.color - 1) * 9) + (leaf.variation * 3)
 		leaf_data:set(0,index-1,
-							8 * (2 + leaf.color),
-							leaf.x * screen_to_i16,
-							leaf.y * screen_to_i16,
-							false,false,
-							leaf.dx * i16MAX,
-							leaf.dy * i16MAX)
+							sprite,
+							(leaf.x-3) * screen_to_i16,
+							(leaf.y+3) * screen_to_i16,
+							leaf.angle * i16MAX,
+							leaf.foreground * 10)
 	end
-	leaf_data:sort()
-	store("assets/leafdata.pod",pod(leaf_data,0x13))
+	leaf_data:sort(4)
+	store("assets/leafdata.pod",pod(leaf_data,0x13,{fgLeaves=foregroundLeaves,bgLeaves=backgroundLeaves}))
 	leaves = leaf_data:copy()
 	spr(8,0,0)
 end
@@ -170,8 +176,8 @@ end
 function generateGrass()
 	cls()
 	spr(10,0,0)
-	grassTable = generateLeaves{kernelSizeX=3,kernelSizeY=1,
-										positionRandom = 4}
+	grassTable = generateLeaves{kernelSizeX=3,kernelSizeY=1.75,
+										positionRandom = 3}
 	grass_data = userdata("i16",5,#grassTable)
 	for index,blade in pairs(grassTable) do
 		grass_data:set(0,index-1,
@@ -209,36 +215,54 @@ function _update()
 				noise_w,noise_h)
 	
 	
-	leaf_delta = noise_sample:take(leaf_noise_ids)
-	leaf_delta:mul(leaf_noise_strength,true)
+	leaf_displace = noise_sample:take(leaf_noise_ids)
 	
-	leaf_data:mul(
-		leaf_delta, leaves,
-		6, --read offset
-		5,
-		1,
-		1,
-		leaf_data:width(),
-		leaf_data:height()
-	)
-	leaf_data:mul(
-		leaf_delta, leaves,
-		6, --read offset
-		6,
-		1,
-		1,
-		leaf_data:width(),
-		leaf_data:height()
-	)
-	leaf_data:add(
-		leaves,leaves,
-		5,
-		1,
-		2,
-		leaves:width(),
-		leaf_data:width(),
-		leaf_data:height()
-	)
+	leaf_sprite = leaf_displace:mul(leaf_noise_sprite_strength)
+	leaf_sprite:max(-1,true)
+	leaf_sprite:min(1,true)
+	
+	leaf_displace:mul(leaf_noise_strength,true)
+	
+	leaf_dx = userdata("f64",1,leaf_data:height())
+	leaf_dy = userdata("f64",1,leaf_data:height())
+	
+	leaf_data:blit(leaves,
+					0,0, --src x,y
+					0,0, --dst x,y
+					3,leaf_data:height()) --width,height
+	
+	leaf_vec:blit(leaf_dx,
+						0,0, --src x,y
+						0,0, --dst x,y
+						1,leaf_vec:height())
+						
+	leaf_vec:blit(leaf_dy,
+						1,0, --src x,y
+						0,0, --dst x,y
+						1,leaf_vec:height())
+						
+	leaf_dx:mul(leaf_displace,true)
+	leaf_dy:mul(leaf_displace,true)
+	
+	leaves:add(leaf_sprite,true,
+					0,0, --src,dst offset
+					1, --length
+					1, --src stride
+					leaves:width(), --dst stride
+					leaves:height())
+	
+	leaves:add(leaf_dx,true,
+					0,1, --src,dst offset
+					1,--length
+					1, --src stride
+					leaves:width(), --dst stride
+					leaves:height())
+	leaves:add(leaf_dy,true,
+					0,2, --src,dst offset
+					1,--length
+					1, --src stride
+					leaves:width(), --dst stride
+					leaves:height())
 	
 	grass_delta = noise_sample:take(grass_noise_ids)
 	grass_delta:mul(grass_noise_strength,true)
@@ -262,9 +286,11 @@ function _draw()
 	spr(8,0,0)
 	
 	
-	spr(leaves:convert("f64"),0,leaves:height(),leaves:width()-1,leaves:width())
+	spr(leaves,0,bg_leaves)
 	
 	spr(11,0,0)
+	
+	spr(leaves,bg_leaves*leaves:width(),fg_leaves)
 	
 	spr(grass)
 	
