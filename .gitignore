@@ -1,2 +1,2 @@
 *.p64.png
-/build/
+build/*
