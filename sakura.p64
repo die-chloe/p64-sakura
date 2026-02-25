@@ -71,11 +71,12 @@ function generateLeaves(arg)
 	return leaves,numForeground,numBackground
 end
 :: main.lua
---[[pod_format="raw",created="2026-01-22 10:20:50",modified="2026-02-23 19:18:37",revision=932]]
+--[[pod_format="raw",created="2026-01-22 10:20:50",modified="2026-02-25 19:49:17",revision=933]]
 cp("/desktop/Projects/Sakura/assets/perlin1.pod", "assets/perlin1.pod")
 cp("/desktop/Projects/Sakura/src/sakura.lua", "sakura.lua")
 cp("/desktop/Projects/Sakura/src/math.lua", "math.lua")
 cp("/desktop/Projects/Sakura/src/genLeaves.lua", "genLeaves.lua")
+cp("/desktop/Projects/Sakura/src/particles.lua", "particles.lua")
 
 include "sakura.lua"
 :: math.lua
@@ -92,9 +93,10 @@ for i=0,127 do
 	ud_cos[i] = sin(i/512)
 end
 :: sakura.lua
---[[pod_format="raw",created="2026-01-22 10:20:50",modified="2026-02-25 10:59:48",revision=1089]]
+--[[pod_format="raw",created="2026-01-22 10:20:50",modified="2026-02-25 13:01:45",revision=1093]]
 include "math.lua"
 include "genLeaves.lua"
+include "particles.lua"
 
 leaf_noise_strength = 8
 leaf_noise_sprite_strength = 2.5
@@ -103,6 +105,9 @@ grass_noise_bias = 2.5
 noise_scale_leaves = 4
 noise_scale_grassx = 1
 noise_scale_grassy = .5
+
+max_particles = 1000
+num_particles = 0
 
 frame = 0
 
@@ -393,9 +398,9 @@ function _draw()
 	print(stat(7).."fps")
 end
 :: .info.pod
---[[pod,created="2026-01-15 17:19:56",modified="2026-02-25 11:01:54",runtime=24,workspaces={{location="main.lua#1",workspace_index=1},{location="gfx/0.gfx#10",workspace_index=2}}]]
+--[[pod,created="2026-01-15 17:19:56",modified="2026-02-25 19:49:17",runtime=24,workspaces={{location="main.lua#5",workspace_index=1},{location="gfx/0.gfx#16",workspace_index=2}}]]
 :: assets/.info.pod
---[[pod,created="2026-01-27 04:18:13",modified="2026-02-25 11:01:54"]]
+--[[pod,created="2026-01-27 04:18:13",modified="2026-02-25 19:49:17"]]
 :: assets/grass_data.pod
 b64$LS1bW3BvZF9mb3JtYXQ9InJhdyIsY3JlYXRlZD0iMjAyNi0wMi0wOSAyMDoyNTo1NSIsbW9k
 aWZpZWQ9IjIwMjYtMDItMjUgMTA6NTk6NDUiLHJldmlzaW9uPTkzNjI1XV0KbHo0APIZAAC3LQAA
@@ -4356,10 +4361,10 @@ NNAGDB9iMAscHzSgBwwfNgAOHB84wAYMHzeAAAsvZWZAIhwfZgAQTB9i4A8MHmEwAA-wDyofM-AP
 HB9h8D8MHzRQAQwfZMAYDB81wAEMC4AAL2Zk8AUMD3AGDR800BgrDtAPDxAAHB8yEAAsHzMQAAwf
 MNAGDB85IAYMCnAAUDAwMSIp
 :: gfx/.info.pod
---[[pod,created="2026-01-15 17:19:56",modified="2026-02-25 11:01:54"]]
+--[[pod,created="2026-01-15 17:19:56",modified="2026-02-25 19:49:17"]]
 :: gfx/0.gfx
 b64$LS1bW3BvZCxjcmVhdGVkPSIyMDI1LTAxLTE3IDEwOjM1OjQ4Iixtb2RpZmllZD0iMjAyNi0w
-Mi0yNSAxMTowMTo1MyIscmV2aXNpb249MTAzXV1sejQAijMAAEBrAADzIXtbMF09e2JtcD1weHUA
+Mi0yNSAxMTozNDo0NiIscmV2aXNpb249MTA1XV1sejQAcDMAAEBrAADzIXtbMF09e2JtcD1weHUA
 QyAQEATwVgcQB8AX0BfABxAH8FYsZmxhZ3M9MCxwYW5feAgAy3k9MCx6b29tPTh9LD4AH-AxAP8-
 8M8o4AEAAA4BAAAE-x3-DP0i-gad-v_G-Tv_-4ItDv1E-v9h-XD_C33_EP0D-vbN-gf9gf4H-QL_
 -yD9gf4Iff7-Ef2Z-v8d-an_-xT9s-7-Bv0bTv2M-vH91Q49-un91-7g-eD_1f13rv1Z-p-9n-4K
@@ -4580,18 +4585,17 @@ LvALNYBF-hHw-4AOBfAMNYA1DABgnlVwJT4F8iLwAaAlcFUuFX5AnvD-pBVwNU7YAmC1FUAdBR1z
 CgA6ASC6LesDoFU_BfD-uAUddR6oAlC4FQ0lbgkAULZlEA4gyAJguCVwHVUANgFguRVgHTUu7QoA
 CwBADSU_ANIaMbgVYHMGQQ7w-8FcEmAO8P-ABQ3CDFDw-75FoBAAML41sAcAIL1F2wMw-7pVHgRg
 -7k1ABXQWABQtyUgFdAZABy9BwAAHgAhvgUHABDNERMKBgAhFR4LADHw-87WBgILAAEaAAYFAACF
-AC-PBZYlIR-lQiEODyM5HR83MQCR-wRyFw8d8AAd4B3gHdAd0B3AHfAIQwAdQFMHDxdYI-8CAA8d
-4A0PDdAc4BzQHNAcwBxLAB_QNQfwAA8X4A7glQAATAAgDQwDAAFQAC-QDFAAHzM4B_BPALLgDw3g
-DdAPHQ3QHQIAL-AHTQAdwDoPF9AH4A7QHx3QD0sADgUAXx3QLfAGVwAdwFsPFw8dwAfQB9APF0gA
-bw3ADg3QDk0AJON7DxcfHaAXwA8XDcAPHUgAPz3wBUgAHf8BmRcPF7AODRAPHZAMDTAMgEUAHv8B
-BAQEAA4QDxceDxIeHRANADwAHa8PFw8OAC4PEgAtPQAfERA9AF8eDxIADnsAIAA9AJ8gDg8SEB0A
-DSB6ACYPPQAgEEA9AI8QDg8SDg0QDTwAHJAwDxIPFyAfDgC5AA88ACFvDw4QHg8SqQEkzx8SHw4P
-EgAPDg8SQEAAH68QBx4PDh4dEA8SfQAenwcPFwAuDw4ALT0AIBAQPQBfHg8OAA57ACHfBw8XIA4P
-DhAdAA8SIHoAJQ89ACGAQAcPFxAODw7pAS8PDusBH1AHIB8XALoADzsAII8PFxAeDw4QDagBIQAd
-AhAfHgMACwAPJgIerwcQJw8XBy4QDw58AB5vFwAXHxcAOwAhXxAXABcPOwAjIRcgLQFPAA8OIHUA
-H08HHxcAOwAhQEAXEAdjAT8QDxc6ABwBOQAAwAMvF1DMAh4gEBfSAT8fF0CuAB5-AA4HHxcgDeQI
-Sl8EBATwAGIAHg8xAP--BQ5MAg_IAf----_tDzEA------------------------------------
------_5QbT03fX0=
+AC-PBZYlIR-lQiEODyM5HR83MQCRwHIXDx3wAB3gHeAd0AIAPw3wCEMAHUBTBw8XWCPAAA8d4A0P
+DdAc4BzQAgAfDEsAH5A1B-AADxfgDuCVAABMACANDAMAD1AAJjM4B_BPAK-gDw3gDdAPHQ3Q6AAm
+wDoPF9AH4A7QHx3QD0sADgUAD1cAIsBbDxcPHcAH0AfQDxdIAG8NwA4N0A5NACTvew8XHx2gF8AP
+Fw3ADx1IACf-AZkXDxewDg0QDx2QDA0wDIBFAB7-AQQEBAAOEA8XHg8SHh0QDQA8AB2vDxcPDgAu
+DxIALT0AHxEQPQBfHg8SAA57ACAAPQCfIA4PEhAdAA0gegAmDz0AIBBAPQCPEA4PEg4NEA08AByQ
+MA8SDxcgHw4AuQAPPAAhbw8OEB4PEqkBJM8fEh8ODxIADw4PEkBAAB_vEAceDw4eHRAPEn0AHp8H
+DxcALg8OAC09ACAQED0AXx4PDgAOewAh3wcPFyAODw4QHQAPEiB6ACUPPQAhgEAHDxcQDg8O6QEv
+Dw7rAR9QByAfFwC6AA87ACCPDxcQHg8OEA2oASEAHQIQHx4DAAsADyYCHq8HECcPFwcuEA8OfAAe
+bxcAFx8XADsAIV8QFwAXDzsAIyEXIC0BTwAPDiB1AB9PBx8XADsAIUBAFxAHYwE-EA8XOgAcATkA
+AMADLxdQzAIeIBAX0gE-HxdArgAefwAOBx8XIA3kCEpfBAQE8ABiAB4PMQD--wUOTAIPiAH-----
+rQ8xAP-----------------------------------------uUG09N319
 :: label.qoi
 b64$cW9pZgAAAeAAAAEOBAH_vZrf-f39-eH_g3ac8AfUEMgH-f39-f393xD9ywf9-f39-f3bEMEH
 EP3UB-39-f39_BD9-cIH2RDGB94Q0QfH-v-x6MAHxj8HwD-CB8A-wAfCPwfBP8AHwj8HwT-AB8E-
@@ -5281,14 +5285,14 @@ xTroA9AQ-f39-d063BDAOv3qA8A65wPREME6EP39-f3YOt4QwTr9-dQD0xD9-f392jr9-csDOusD
 Ov39-c4D4xD9-f3mOsouOv39-cMD8BD9-f3hOs0uOv39-ccD7hD9-f3eOv39-dUD8xD9-f3dOv39
 -dUD9BD9-f3VOv39-d0D9BD9-f3ROv3hAAAAAAAAAAE=
 :: map/.info.pod
---[[pod,created="2026-01-15 17:19:56",modified="2026-02-25 11:01:54"]]
+--[[pod,created="2026-01-15 17:19:56",modified="2026-02-25 19:49:17"]]
 :: map/0.map
 b64$LS1bW3BvZCxjcmVhdGVkPSIyMDI1LTAxLTE3IDEwOjM1OjQ4Iixtb2RpZmllZD0iMjAyNi0w
 MS0yNiAyMjo0MTowMCIscmV2aXNpb249M11dbHo0AE4AAABSAAAA8Rx7e2JtcD1weHUATIAgIAD-
 AAD---8DLGhpZGRlbj1mYWxzZSxwYW5feD0wCADSeT0wLHRpbGVfaD0xNgoAEHcKAKB6b29tPTAu
 NX19
 :: sfx/.info.pod
---[[pod,created="2026-01-15 17:19:56",modified="2026-02-25 11:01:54"]]
+--[[pod,created="2026-01-15 17:19:56",modified="2026-02-25 19:49:17"]]
 :: sfx/0.sfx
 b64$LS1bW3BvZCxjcmVhdGVkPSIyMDI1LTA3LTMxIDA4OjMwOjI4Iixtb2RpZmllZD0iMjAyNS0w
 Ny0zMSAwODozMDoyOCIscmV2aXNpb249MF1dbHo0AKAAAAALCgAA-zBweHUAAygAAAQABA9AEAIO

@@ -1,6 +1,7 @@
---[[pod_format="raw",created="2026-01-22 10:20:50",modified="2026-02-25 11:02:04",revision=1091]]
+--[[pod_format="raw",created="2026-01-22 10:20:50",modified="2026-02-25 13:01:45",revision=1093]]
 include "math.lua"
 include "genLeaves.lua"
+include "particles.lua"
 
 leaf_noise_strength = 8
 leaf_noise_sprite_strength = 2.5
@@ -9,6 +10,9 @@ grass_noise_bias = 2.5
 noise_scale_leaves = 4
 noise_scale_grassx = 1
 noise_scale_grassy = .5
+
+max_particles = 1000
+num_particles = 0
 
 frame = 0
 
