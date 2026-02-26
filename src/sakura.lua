@@ -1,4 +1,4 @@
---[[pod_format="raw",created="2026-01-22 10:20:50",modified="2026-02-25 13:01:45",revision=1093]]
+--[[pod_format="raw",created="2026-01-22 10:20:50",modified="2026-02-26 17:35:10",revision=1103]]
 include "math.lua"
 include "genLeaves.lua"
 include "particles.lua"
@@ -26,128 +26,10 @@ screen_to_i16 = i16MAX/480
 
 
 function _init()
-	cls()
-	spr(8,0,0)
-	
 	if not regen then
-		leaf_data,leaf_meta = unpod(fetch("assets/leafdata.pod"))
-		leaf_data = leaf_data:convert("f64")
-		fg_leaves = leaf_meta.fgLeaves
-		bg_leaves = leaf_meta.bgLeaves
-		
-		grass_data = unpod(fetch("assets/grass_data.pod")):convert("f64")
-		grass_data:mul(1/screen_to_i16,true,
-						1, --source offset
-						1, --dest offset
-						2, --length
-						grass_data:width(),
-						grass_data:width(),
-						grass_data:height())
-		
-		grass = userdata("f64",5,grass_data:height())
-		grass = grass_data:copy()
-		
-		noise_sample,noise_meta = unpod(fetch("assets/perlin1.pod"))
-		noise_sample = noise_sample:convert("f64")
-		
-		if(noise_meta.format == "i8") then conversion = i8MAX
-		elseif(noise_meta.format == "i16") then conversion = i16MAX
-		elseif(noise_meta.format == "i32") then conversion = i32MAX
-		else conversion = 1 end
-		
-		noise_sample:mul(1/conversion,true)
-		
-		noise_w,noise_h = noise_sample:width(),noise_sample:height()
-		
-		noise = userdata("f64",noise_w*2,noise_h*2)
-		noise_sample:blit(noise,0,0,	0,			0)
-		noise_sample:blit(noise,0,0,	noise_w,	0)
-		noise_sample:blit(noise,0,0,	0,			noise_h)
-		noise_sample:blit(noise,0,0,	noise_w,	noise_h)
-		
-		noise_x,noise_y = 0,16
-		
-		
-		leaf_data:mul(1/screen_to_i16,true,
-						1, --source offset
-						1, --dest offset
-						2, --length
-						leaf_data:width(),
-						leaf_data:width(),
-						leaf_data:height())
-		
-		leaf_pos = userdata("f64",2,leaf_data:height())
-		leaf_data:blit(leaf_pos,
-							1,0, --src x,y
-							0,0, --dst x,y
-							2,leaf_data:height())
-							
-		leaf_pos:mul(1/noise_scale_leaves,true)
-		
-		leaf_pos = leaf_pos:convert("i32")
-		leaf_pos:mod(noise_w,true)
-		
-		leaf_vec = userdata("f64",2,leaf_data:height())
-		
-		for i=0,leaf_data:height()-1 do
-			local angle =leaf_data:get(3,i)/i16MAX
-			
-			leaf_vec:set(0,i,
-							cos(angle),
-							sin(angle))
-		end
-		
-		leaf_noise_ids = userdata("i32",1,leaf_pos:height())
-		leaf_noise_idx = userdata("i32",1,leaf_pos:height())
-		leaf_pos:blit(leaf_noise_idx,
-							0,0, --src x,y
-							0,0, --dst x,y
-							1,
-							leaf_pos:height())
-		leaf_noise_idx:mutate("i32",leaf_pos:height(),1)
-		leaf_pos:blit(leaf_noise_ids,
-							1,0, --src x,y
-							0,0, --dst x,y
-							1, --width
-							leaf_pos:height()) --height
-		leaf_noise_ids:mutate("i32",leaf_pos:height(),1)
-		leaf_noise_ids:mul(noise_w,true)
-		leaf_noise_ids:add(leaf_noise_idx,true)
-						
-		leaves = userdata("f64",3,leaf_data:height())
-		
-		grass_noise_idx = userdata("f64",1,grass_data:height())
-		grass_noise_ids = userdata("f64",1,grass_data:height())
-		
-		
-		
-		grass_data:blit(grass_noise_idx,
-							1,0, --src x,y
-							0,0,
-							1,
-							grass_data:height())
-		grass_noise_idx:mul(1/noise_scale_grassx,true)
-		grass_noise_idx = grass_noise_idx:convert("i32")
-		grass_noise_idx:mutate("i32",grass_data:height(),1)
-		--grass_noise_idx:add(8,true)
-		grass_noise_idx:mod(noise_w,true)
-		
-		
-		grass_data:blit(grass_noise_ids,
-							2,0, --src x,y
-							0,0,
-							1,
-							grass_data:height())
-		grass_noise_ids:mul(1/noise_scale_grassy,true)
-		grass_noise_ids = grass_noise_ids:convert("i32")
-		grass_noise_ids:mutate("i32",grass_data:height(),1)
-		--\grass_noise_ids:add(14,true)
-		grass_noise_ids:mod(noise_h,true)
-		grass_noise_ids:mul(noise_w,true)
-		
-		
-		grass_noise_ids:add(grass_noise_idx,true)
-		
+		init_noise()
+		init_leaves()
+		init_grass()
 	end
 end
 
@@ -218,7 +100,108 @@ function _update()
 				0,0, -- dst x,y
 				noise_w,noise_h)
 	
+	update_leaves()
+	update_grass()
 	
+	frame += 1
+end
+
+function _draw()
+	cls()
+	spr(8,0,0)
+	
+	
+	spr(leaves,0,bg_leaves)
+	
+	spr(11,0,0)
+	
+	spr(leaves,bg_leaves*leaves:width(),fg_leaves)
+	
+	spr(grass)
+	
+	print(stat(1),4,4,7)
+	print(string.format("%.3fMB",stat(0)/1000000))
+	print(stat(7).."fps")
+end
+
+function init_noise()
+	noise_sample,noise_meta = unpod(fetch("assets/perlin1.pod"))
+	noise_sample = noise_sample:convert("f64")
+	
+	if(noise_meta.format == "i8") then conversion = i8MAX
+	elseif(noise_meta.format == "i16") then conversion = i16MAX
+	elseif(noise_meta.format == "i32") then conversion = i32MAX
+	else conversion = 1 end
+	
+	noise_sample:mul(1/conversion,true)
+	
+	noise_w,noise_h = noise_sample:width(),noise_sample:height()
+	
+	noise = userdata("f64",noise_w*2,noise_h*2)
+	noise_sample:blit(noise,0,0,	0,			0)
+	noise_sample:blit(noise,0,0,	noise_w,	0)
+	noise_sample:blit(noise,0,0,	0,			noise_h)
+	noise_sample:blit(noise,0,0,	noise_w,	noise_h)
+	
+	noise_x,noise_y = 0,0
+end
+
+function init_leaves()
+	leaf_data,leaf_meta = unpod(fetch("assets/leafdata.pod"))
+	leaf_data = leaf_data:convert("f64")
+	fg_leaves = leaf_meta.fgLeaves
+	bg_leaves = leaf_meta.bgLeaves
+	
+	leaf_data:mul(1/screen_to_i16,true,
+					1, --source offset
+					1, --dest offset
+					2, --length
+					leaf_data:width(),
+					leaf_data:width(),
+					leaf_data:height())
+	
+	leaf_pos = userdata("f64",2,leaf_data:height())
+	leaf_data:blit(leaf_pos,
+						1,0, --src x,y
+						0,0, --dst x,y
+						2,leaf_data:height())
+						
+	leaf_pos:mul(1/noise_scale_leaves,true)
+	
+	leaf_pos = leaf_pos:convert("i32")
+	leaf_pos:mod(noise_w,true)
+	
+	leaf_vec = userdata("f64",2,leaf_data:height())
+	
+	for i=0,leaf_data:height()-1 do
+		local angle =leaf_data:get(3,i)/i16MAX
+		
+		leaf_vec:set(0,i,
+						cos(angle),
+						sin(angle))
+	end
+	
+	leaf_noise_ids = userdata("i32",1,leaf_pos:height())
+	leaf_noise_idx = userdata("i32",1,leaf_pos:height())
+	leaf_pos:blit(leaf_noise_idx,
+						0,0, --src x,y
+						0,0, --dst x,y
+						1,
+						leaf_pos:height())
+	leaf_noise_idx:mutate("i32",leaf_pos:height(),1)
+	leaf_pos:blit(leaf_noise_ids,
+						1,0, --src x,y
+						0,0, --dst x,y
+						1, --width
+						leaf_pos:height()) --height
+	leaf_noise_ids:mutate("i32",leaf_pos:height(),1)
+	leaf_noise_ids:mul(noise_w,true)
+	leaf_noise_ids:add(leaf_noise_idx,true)
+					
+	leaves = userdata("f64",3,leaf_data:height())
+end
+
+function update_leaves()
 	leaf_displace = noise_sample:take(leaf_noise_ids)
 	
 	leaf_sprite = leaf_displace:mul(leaf_noise_sprite_strength)
@@ -267,7 +250,49 @@ function _update()
 					1, --src stride
 					leaves:width(), --dst stride
 					leaves:height())
+end
+
+function init_grass()
+	grass_data = unpod(fetch("assets/grass_data.pod")):convert("f64")
+	grass_data:mul(1/screen_to_i16,true,
+					1, --source offset
+					1, --dest offset
+					2, --length
+					grass_data:width(),
+					grass_data:width(),
+					grass_data:height())
 	
+	grass = userdata("f64",5,grass_data:height())
+	grass = grass_data:copy()
+	
+	grass_noise_idx = userdata("f64",1,grass_data:height())
+	grass_noise_ids = userdata("f64",1,grass_data:height())
+	
+	grass_data:blit(grass_noise_idx,
+						1,0, --src x,y
+						0,0,
+						1,
+						grass_data:height())
+	grass_noise_idx:mul(1/noise_scale_grassx,true)
+	grass_noise_idx = grass_noise_idx:convert("i32")
+	grass_noise_idx:mutate("i32",grass_data:height(),1)
+	grass_noise_idx:mod(noise_w,true)
+	
+	grass_data:blit(grass_noise_ids,
+						2,0, --src x,y
+						0,0,
+						1,
+						grass_data:height())
+	grass_noise_ids:mul(1/noise_scale_grassy,true)
+	grass_noise_ids = grass_noise_ids:convert("i32")
+	grass_noise_ids:mutate("i32",grass_data:height(),1)
+	grass_noise_ids:mod(noise_h,true)
+	grass_noise_ids:mul(noise_w,true)
+	
+	grass_noise_ids:add(grass_noise_idx,true)
+end
+
+function update_grass()
 	grass_delta = noise_sample:take(grass_noise_ids)
 	grass_delta:mul(grass_noise_strength,true)
 	grass_delta:add(grass_noise_bias,true)
@@ -281,24 +306,4 @@ function _update()
 						1, --src stride
 						grass_data:width(), --dst stride
 						grass_data:height()) --num elements
-	
-	frame += 1
-end
-
-function _draw()
-	cls()
-	spr(8,0,0)
-	
-	
-	spr(leaves,0,bg_leaves)
-	
-	spr(11,0,0)
-	
-	spr(leaves,bg_leaves*leaves:width(),fg_leaves)
-	
-	spr(grass)
-	
-	print(stat(1),4,4,7)
-	print(string.format("%.3fMB",stat(0)/1000000))
-	print(stat(7).."fps")
 end
