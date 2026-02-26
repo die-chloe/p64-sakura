@@ -1,4 +1,4 @@
---[[pod_format="raw",created="2026-01-22 10:20:50",modified="2026-02-26 17:35:10",revision=1103]]
+--[[pod_format="raw",created="2026-01-22 10:20:50",modified="2026-02-26 22:05:49",revision=1184]]
 include "math.lua"
 include "genLeaves.lua"
 include "particles.lua"
@@ -8,11 +8,9 @@ leaf_noise_sprite_strength = 2.5
 grass_noise_strength = 3
 grass_noise_bias = 2.5
 noise_scale_leaves = 4
+
 noise_scale_grassx = 1
 noise_scale_grassy = .5
-
-max_particles = 1000
-num_particles = 0
 
 frame = 0
 
@@ -30,6 +28,12 @@ function _init()
 		init_noise()
 		init_leaves()
 		init_grass()
+		
+		add_particles(1,true)
+		
+		for i=0,60 do
+			_update()
+		end
 	end
 end
 
@@ -37,12 +41,12 @@ function generate()
 	cls()
 	spr(9,0,0)
 	leafTable,foregroundLeaves,backgroundLeaves = generateLeaves{kernelSizeX=2,
-																kernelSizeY=1.9,
+																kernelSizeY=1.75,
 																leafSize=1,iterations=1,
 																positionRandom=6,
 																windAngle=0.1,
 																angleRandom=0.125,
-																foregroundPercent = 0.5}
+																foregroundPercent = 0.6}
 	leaf_data = userdata("i16",5,#leafTable)
 	for index,leaf in pairs(leafTable) do
 		local sprite = 25 + ((leaf.color - 1) * 9) + (leaf.variation * 3)
@@ -62,7 +66,7 @@ end
 function generateGrass()
 	cls()
 	spr(10,0,0)
-	grassTable = generateLeaves{kernelSizeX=3,kernelSizeY=1.75,
+	grassTable = generateLeaves{kernelSizeX=3,kernelSizeY=2.5,
 										positionRandom = 3}
 	grass_data = userdata("i16",5,#grassTable)
 	for index,blade in pairs(grassTable) do
@@ -71,8 +75,10 @@ function generateGrass()
 							(blade.x - 8) * screen_to_i16,
 							(blade.y - 14) * screen_to_i16,
 							false,false)
-		store("assets/grass_data.pod",pod(grass_data,0x13))
 	end
+	grass_data:sort(1,true)
+	grass_data:sort(2,false)
+	store("assets/grass_data.pod",pod(grass_data,0x13))
 end
 
 grass_wind = 0
@@ -103,6 +109,8 @@ function _update()
 	update_leaves()
 	update_grass()
 	
+	update_particles()
+	
 	frame += 1
 end
 
@@ -111,13 +119,19 @@ function _draw()
 	spr(8,0,0)
 	
 	
+	
 	spr(leaves,0,bg_leaves)
 	
+	draw_particles()
+	
+	spr(12,0,0)
 	spr(11,0,0)
 	
 	spr(leaves,bg_leaves*leaves:width(),fg_leaves)
 	
 	spr(grass)
+	
+	
 	
 	print(stat(1),4,4,7)
 	print(string.format("%.3fMB",stat(0)/1000000))
