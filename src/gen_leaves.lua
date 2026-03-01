@@ -64,7 +64,7 @@ end
 
 function generate_leaves()
 	cls()
-	spr(9, 0, 0)
+	spr(4, 0, 0)
 	leaf_table, foreground_leaves, background_leaves = generate {kernel_size_x = 2,
 		kernel_size_y = 1.75,
 		leaf_size = 1, iterations = 1,
@@ -74,7 +74,7 @@ function generate_leaves()
 		foreground_percent = 0.6}
 	leaf_data = userdata("i16", 5, #leaf_table)
 	for index, leaf in pairs(leaf_table) do
-		local sprite = 25 + ((leaf.color - 1) * 9) + (leaf.variation * 3)
+		local sprite = 17 + ((leaf.color - 1) * 9) + (leaf.variation * 3)
 		leaf_data:set(0, index - 1,
 					  sprite,
 					  (leaf.x - 3) * screen_to_i16,
@@ -90,13 +90,13 @@ end
 
 function generate_grass()
 	cls()
-	spr(10, 0, 0)
+	spr(5, 0, 0)
 	grass_table = generate {kernel_size_x = 3, kernel_size_y = 2.5,
 		position_random = 3}
 	grass_data = userdata("i16", 5, #grass_table)
 	for index, blade in pairs(grass_table) do
 		grass_data:set(0, index - 1,
-					   19,
+					   11,
 					   (blade.x - 8) * screen_to_i16,
 					   (blade.y - 14) * screen_to_i16,
 					   false, false)

@@ -72,7 +72,7 @@ end
 
 function _draw()
 	cls()
-	spr(8, 0, 0)
+	spr(1, 0, 0)
 
 
 	update_leaves()
@@ -82,14 +82,13 @@ function _draw()
 
 	draw_particles()
 
-	spr(12, 0, 0)
-	spr(11, 0, 0)
+	spr(2, 0, 0)
 
 	spr(leaves, bg_leaves * leaves:width(), fg_leaves)
 
 	spr(grass)
 
-	spr(13,0,0)
+	spr(3,0,190)
 
 	draw_mouse()
 
