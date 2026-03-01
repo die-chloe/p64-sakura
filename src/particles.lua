@@ -10,7 +10,7 @@ particle_spr_effect = 4
 noise_scale_particles = 4
 
 function update_particles()
-	if (rnd() < 0.125) then add_particles(flr(rnd(2)) + 1) end
+	if (rnd() < 0.085) then add_particles(flr(rnd(2)) + 1) end
 
 	local p_idx = userdata("f64", 1, particles:height())
 	local p_ids = userdata("f64", 1, particles:height())

@@ -1,5 +1,3 @@
---include "math.lua"
-include "gen_leaves.lua"
 include "particles.lua"
 include "cursor_effects.lua"
 
@@ -24,29 +22,22 @@ screen_to_i16              = i16MAX / 480
 
 
 function _init()
-	if not regen then
-		init_noise()
-		init_leaves()
-		init_grass()
+	init_noise()
+	init_leaves()
+	init_grass()
 
-		add_particles(1, true)
+	add_particles(1, true)
 
-		for i = 0, 60 do
-			_update()
-		end
-
-		init_mouse()
+	for i = 0, 60 do
+		_update()
 	end
+
+	init_mouse()
 end
 
 grass_wind = 0
 
 function _update()
-	if (regen) then
-		generate_leaves()
-		generate_grass()
-		exit()
-	end
 
 	if (frame % 2) == 0 then
 		noise_x -= 1
@@ -91,12 +82,6 @@ function _draw()
 	spr(3,0,190)
 
 	draw_mouse()
-
-	--[[
-	print(stat(1), 4, 16, 7)
-	print(string.format("%.3fMB", stat(0) / 1000000))
-	print(stat(7) .. "fps")
-	--]]
 end
 
 function init_noise()
