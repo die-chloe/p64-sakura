@@ -89,11 +89,15 @@ function _draw()
 
 	spr(grass)
 
+	spr(13,0,0)
+
 	draw_mouse()
 
+	--[[
 	print(stat(1), 4, 16, 7)
 	print(string.format("%.3fMB", stat(0) / 1000000))
 	print(stat(7) .. "fps")
+	--]]
 end
 
 function init_noise()
