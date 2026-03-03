@@ -55,7 +55,82 @@ function draw_mouse()
 	--blit(cursor_effect_sample)
 end
 
-:: gen_leaves.lua
+:: grass.lua
+function generate_grass()
+    cls()
+    spr(5, 0, 0)
+    grass_table = generate { kernel_size_x = 3, kernel_size_y = 2.5,
+        position_random = 3 }
+    grass_data = userdata("i16", 5, #grass_table)
+    for index, blade in pairs(grass_table) do
+        grass_data:set(0, index - 1,
+            11,
+            (blade.x - 8) * screen_to_i16,
+            (blade.y - 14) * screen_to_i16,
+            false, false)
+    end
+    grass_data:sort(1, true)
+    grass_data:sort(2, false)
+    store("assets/grass_data.pod", pod(grass_data, 0x13))
+end
+
+function init_grass()
+    grass_data = unpod(fetch("assets/grass_data.pod")):convert("f64")
+    grass_data:mul(1 / screen_to_i16, true,
+        1, --source offset
+        1, --dest offset
+        2, --length
+        grass_data:width(),
+        grass_data:width(),
+        grass_data:height())
+
+    grass = userdata("f64", 5, grass_data:height())
+    grass = grass_data:copy()
+
+    grass_noise_idx = userdata("f64", 1, grass_data:height())
+    grass_noise_ids = userdata("f64", 1, grass_data:height())
+
+    grass_data:blit(grass_noise_idx,
+        1, 0, --src x,y
+        0, 0,
+        1,
+        grass_data:height())
+    grass_noise_idx:mul(1 / noise_scale_grassx, true)
+    grass_noise_idx = grass_noise_idx:convert("i32")
+    grass_noise_idx:mutate("i32", grass_data:height(), 1)
+    grass_noise_idx:mod(noise_w, true)
+
+    grass_data:blit(grass_noise_ids,
+        2, 0, --src x,y
+        0, 0,
+        1,
+        grass_data:height())
+    grass_noise_ids:mul(1 / noise_scale_grassy, true)
+    grass_noise_ids = grass_noise_ids:convert("i32")
+    grass_noise_ids:mutate("i32", grass_data:height(), 1)
+    grass_noise_ids:mod(noise_h, true)
+    grass_noise_ids:mul(noise_w, true)
+
+    grass_noise_ids:add(grass_noise_idx, true)
+end
+
+function update_grass()
+    grass_delta = noise_sample:take(grass_noise_ids)
+    grass_delta:mul(grass_noise_strength, true)
+    grass_delta:add(grass_noise_bias, true)
+    grass_delta:min(4, true)
+    grass_delta:max(-3, true)
+
+    grass_data:add(grass_delta, grass,
+        0,             --src offset
+        0,             --dst offset
+        1,             --length
+        1,             --src stride
+        grass_data:width(), --dst stride
+        grass_data:height()) --num elements
+end
+
+:: leaves.lua
 function generate(arg)
 	local iterations         = arg.iterations or 1
 	local leaf_min_size      = arg.leaf_min_size or arg.leaf_max_size or arg.leaf_size or 1
@@ -123,351 +198,27 @@ end
 function generate_leaves()
 	cls()
 	spr(4, 0, 0)
-	leaf_table, foreground_leaves, background_leaves = generate {kernel_size_x = 2,
+	leaf_table, foreground_leaves, background_leaves = generate { kernel_size_x = 2,
 		kernel_size_y = 1.75,
 		leaf_size = 1, iterations = 1,
 		position_random = 6,
 		wind_angle = 0.1,
 		angle_random = 0.125,
-		foreground_percent = 0.6}
+		foreground_percent = 0.6 }
 	leaf_data = userdata("i16", 5, #leaf_table)
 	for index, leaf in pairs(leaf_table) do
 		local sprite = 17 + ((leaf.color - 1) * 9) + (leaf.variation * 3)
 		leaf_data:set(0, index - 1,
-					  sprite,
-					  (leaf.x - 3) * screen_to_i16,
-					  (leaf.y + 3) * screen_to_i16,
-					  leaf.angle * i16MAX,
-					  leaf.foreground * 10)
+			sprite,
+			(leaf.x - 3) * screen_to_i16,
+			(leaf.y + 3) * screen_to_i16,
+			leaf.angle * i16MAX,
+			leaf.foreground * 10)
 	end
 	leaf_data:sort(4)
-	store("assets/leafdata.pod", pod(leaf_data, 0x13, {fgLeaves = foreground_leaves, bgLeaves = background_leaves}))
+	store("assets/leafdata.pod", pod(leaf_data, 0x13, { fgLeaves = foreground_leaves, bgLeaves = background_leaves }))
 	leaves = leaf_data:copy()
 	spr(8, 0, 0)
-end
-
-function generate_grass()
-	cls()
-	spr(5, 0, 0)
-	grass_table = generate {kernel_size_x = 3, kernel_size_y = 2.5,
-		position_random = 3}
-	grass_data = userdata("i16", 5, #grass_table)
-	for index, blade in pairs(grass_table) do
-		grass_data:set(0, index - 1,
-					   11,
-					   (blade.x - 8) * screen_to_i16,
-					   (blade.y - 14) * screen_to_i16,
-					   false, false)
-	end
-	grass_data:sort(1, true)
-	grass_data:sort(2, false)
-	store("assets/grass_data.pod", pod(grass_data, 0x13))
-end
-
-:: main.lua
---[[pod_format="raw",created="2026-01-22 10:20:50",modified="2026-03-03 11:18:24",revision=975]]
----[[
-cp("/desktop/Projects/Sakura/assets/perlin1.pod", "assets/perlin1.pod")
-cp("/desktop/Projects/Sakura/src/sakura.lua", "sakura.lua")
-cp("/desktop/Projects/Sakura/src/gen_leaves.lua", "gen_leaves.lua")
-cp("/desktop/Projects/Sakura/src/particles.lua", "particles.lua")
-cp("/desktop/Projects/Sakura/src/cursor_effects.lua", "cursor_effects.lua")
---]]
-include "sakura.lua"
-:: particles.lua
-max_particles = 128
---num_particles = 0
-
-particle_gravity = 0.325
-particle_wind = 0.085
-particle_wind_noise = 0.325
-particle_drag = 0.625
-particle_spr_effect = 4
-
-noise_scale_particles = 4
-
-function update_particles()
-	if (rnd() < 0.125) then add_particles(flr(rnd(2)) + 1) end
-
-	local p_idx = userdata("f64", 1, particles:height())
-	local p_ids = userdata("f64", 1, particles:height())
-
-	particles:blit(p_idx,
-				   1, 0, --src x,y
-				   0, 0, --dst x,y
-				   1) --width
-	particles:blit(p_ids,
-				   2, 0, --src x,y
-				   0, 0, --dst x,y
-				   1) --width
-
-	p_idx:mul(1 / noise_scale_particles, true)
-	p_idx = p_idx:convert("i32")
-	p_idx:mod(noise_w, true)
-
-	p_ids:mul(1 / noise_scale_particles, true)
-	p_ids = p_ids:convert("i32")
-	p_ids:mod(noise_h, true)
-	p_ids:mul(noise_w, true)
-	p_ids:add(p_idx, true)
-
-	p_dx = noise_sample:take(p_ids)
-
-	p_spr_eff = p_dx:mul(particle_spr_effect)
-	p_spr_eff:max(-1, true)
-	p_spr_eff:min(1, true)
-	p_spr_eff:add(0.5, true)
-
-	p_dx:mul(particle_wind_noise, true)
-	p_dx:add(particle_wind, true)
-
-	particles:mul(particle_drag, true,
-				  0,      --src offset
-				  3,      --dest offse
-				  1,      --length
-				  0,      --src stride
-				  particles:width(), --dest stride
-				  particles:height()) --spans
-
-	particles:add(p_dx, true,
-				  0,      --src offset
-				  3,      --dest offset
-				  1,      --length
-				  1,      --src stride
-				  particles:width(), --dest stride
-				  particles:height()) --spans
-
-	particles:add(particles, true,
-				  3,      --src offset
-				  1,      --dest offset
-				  1,      --length
-				  particles:width(), --src stride
-				  particles:width(), --dest stride
-				  particles:height()) --spans
-
-	particles:add(particle_gravity, true,
-				  0,      --src offset
-				  2,      --dst offset
-				  1,      --length
-				  0,      --src stride
-				  particles:width(), --dest stride
-				  particles:height()) --spans
-end
-
-function draw_particles()
-	blit(p_sprites, particles,
-		 0, 0,         --src x,y
-		 0, 0,         --dst x,y
-		 1,            --width
-		 particles:height()) --height
-
-	particles:add(p_spr_eff, true,
-				  0,      --src offset
-				  0,      --dest offset
-				  1,      --length
-				  1,      --src stride
-				  particles:width(), --dest stride
-				  particles:height()) --spans
-
-	spr(particles, 0, particles:height(), 3)
-end
-
-function add_particles(amount, init)
-	local p_ids = userdata("i32", amount)
-	local new_particles, new_p_sprites
-
-	for i = 0, amount do
-		p_ids:set(i, rnd(leaves:height()))
-	end
-	p_ids:mul(leaf_data:width(), true)
-
-	if (init) then
-		new_particles = userdata("f64", 4, amount)
-		new_p_sprites = userdata("f64", 1, amount)
-	else
-		new_particles = userdata("f64", 4, min(particles:height() + amount, max_particles))
-		new_p_sprites = userdata("f64", 1, new_particles:height())
-
-		particles:blit(new_particles,
-					   0, 0, --src x,y
-					   0, amount) --dst x,y
-		p_sprites:blit(new_p_sprites,
-					   0, 0, --src x,y
-					   0, amount) --dst x,y
-	end
-
-	leaf_data:take(p_ids, new_particles,
-				   0,         --id offset
-				   0,         --dest offset
-				   3,         --span length
-				   1,         --id stride
-				   new_particles:width(), --dest stride
-				   amount)    --spans
-
-	new_particles:blit(new_p_sprites,
-					   0, 0, --src x,y
-					   0, 0, --dst x,y
-					   1, --width
-					   amount) --height
-	particles = new_particles:copy()
-	p_sprites = new_p_sprites:copy()
-end
-
-:: sakura.lua
---include "math.lua"
-include "gen_leaves.lua"
-include "particles.lua"
-include "cursor_effects.lua"
-
-leaf_noise_strength        = 8
-leaf_noise_sprite_strength = 2.5
-grass_noise_strength       = 3
-grass_noise_bias           = 2.5
-noise_scale_leaves         = 4
-
-noise_scale_grassx         = 1
-noise_scale_grassy         = .5
-
-frame                      = 0
-
-i8MAX                      = 0x7f
-i16MAX                     = 0x7fff
-i32MAX                     = 0x7fffffff
-
-screen_to_i16              = i16MAX / 480
-
-background                 = userdata("u8", 480, 270)
-
---Debug
-cpu                        = 0
-outline                    = "\f7\^o1ff"
-
---regen = true
-
-
-function _init()
-	if not regen then
-		init_noise()
-		init_leaves()
-		init_grass()
-
-		add_particles(1, true)
-
-		for i = 0, 120 do
-			update_particles()
-		end
-
-		init_mouse()
-	end
-	cpu_new = stat(1)
-end
-
-grass_wind = 0
-
-function _update()
-	if (regen) then
-		generate_leaves()
-		generate_grass()
-		exit()
-	end
-
-	if (frame % 2) == 0 then
-		noise_x -= 1
-		update_leaves()
-	else
-		update_grass()
-	end
-
-	if (frame % 32) == 0 then
-		noise_y += 1
-		cpu_max, cpu_min = 0, 1
-	end
-
-	noise_x %= noise_w
-	noise_y %= noise_h
-
-	noise:blit(noise_sample,
-		noise_x, noise_y, -- src x,y
-		0, 0,       -- dst x,y
-		noise_w, noise_h)
-	update_particles()
-
-	update_mouse()
-
-
-
-	frame += 1
-end
-
-function _draw()
-	if (not init) then
-		blit(get_spr(1))
-		poke(0x5509, 0x7f)
-		spr(2, 0, 0)
-
-		poke(0x5509, 0x3f)
-
-		blit(get_draw_target(), background)
-		init = true
-	end
-	blit(background)
-
-	poke(0x550a, 0x7f)
-	spr(leaves, 0, bg_leaves)
-
-	draw_particles()
-
-	poke(0x550a, 0x3f)
-
-	spr(leaves, bg_leaves * leaves:width(), fg_leaves)
-
-	spr(grass)
-
-	spr(3, 0, 190)
-
-	draw_mouse()
-
-	--DIAGNOSTICS
-
-	cpu_old = cpu_new
-	cpu_new = stat(1)
-	cpu_max = max(cpu_max, cpu_new)
-	cpu_min = min(cpu_min, cpu_new)
-	cpu = (cpu_old + cpu_new) / 2
-
-	---[[
-	print(outline .. string.format("CPU (average last 2 f): %.1f%%", cpu * 100), 4, 16)
-	print(outline .. string.format("CPU (max/min last 32f): %.1f%%/%.1f%%", cpu_max * 100, cpu_min * 100))
-	print(outline .. string.format("RAM: %.3fMB", stat(0) / 1000000))
-	print(outline .. stat(7) .. "fps")
-	--]]
-end
-
-function init_noise()
-	noise_sample, noise_meta = unpod(fetch("assets/perlin1.pod"))
-	noise_sample = noise_sample:convert("f64")
-
-	if (noise_meta.format == "i8") then
-		conversion = i8MAX
-	elseif (noise_meta.format == "i16") then
-		conversion = i16MAX
-	elseif (noise_meta.format == "i32") then
-		conversion = i32MAX
-	else
-		conversion = 1
-	end
-
-	noise_sample:mul(1 / conversion, true)
-
-	noise_w, noise_h = noise_sample:width(), noise_sample:height()
-
-	noise = userdata("f64", noise_w * 2, noise_h * 2)
-	noise_sample:blit(noise, 0, 0, 0, 0)
-	noise_sample:blit(noise, 0, 0, noise_w, 0)
-	noise_sample:blit(noise, 0, 0, 0, noise_h)
-	noise_sample:blit(noise, 0, 0, noise_w, noise_h)
-
-	noise_x, noise_y = 0, 0
 end
 
 function init_leaves()
@@ -607,66 +358,353 @@ function update_leaves()
 		leaves:height())
 end
 
-function init_grass()
-	grass_data = unpod(fetch("assets/grass_data.pod")):convert("f64")
-	grass_data:mul(1 / screen_to_i16, true,
-		1, --source offset
-		1, --dest offset
-		2, --length
-		grass_data:width(),
-		grass_data:width(),
-		grass_data:height())
+:: main.lua
+--[[pod_format="raw",created="2026-01-22 10:20:50",modified="2026-03-03 21:28:14",revision=983]]
+---[[
+cp("/desktop/Projects/Sakura/assets/perlin1.pod", "assets/perlin1.pod")
+cp("/desktop/Projects/Sakura/src/sakura.lua", "sakura.lua")
+cp("/desktop/Projects/Sakura/src/leaves.lua", "leaves.lua")
+cp("/desktop/Projects/Sakura/src/grass.lua", "grass.lua")
+cp("/desktop/Projects/Sakura/src/particles.lua", "particles.lua")
+cp("/desktop/Projects/Sakura/src/cursor_effects.lua", "cursor_effects.lua")
+--]]
+include "sakura.lua"
+:: particles.lua
+max_particles = 128
+--num_particles = 0
 
-	grass = userdata("f64", 5, grass_data:height())
-	grass = grass_data:copy()
+particle_gravity = 0.325
+particle_wind = 0.085
+particle_wind_noise = 0.325
+particle_drag = 0.625
+particle_spr_effect = 4
 
-	grass_noise_idx = userdata("f64", 1, grass_data:height())
-	grass_noise_ids = userdata("f64", 1, grass_data:height())
+noise_scale_particles = 4
 
-	grass_data:blit(grass_noise_idx,
-		1, 0, --src x,y
-		0, 0,
-		1,
-		grass_data:height())
-	grass_noise_idx:mul(1 / noise_scale_grassx, true)
-	grass_noise_idx = grass_noise_idx:convert("i32")
-	grass_noise_idx:mutate("i32", grass_data:height(), 1)
-	grass_noise_idx:mod(noise_w, true)
+function update_particles()
+	if (rnd() < 0.085) then add_particles(flr(rnd(2)) + 1) end
 
-	grass_data:blit(grass_noise_ids,
-		2, 0, --src x,y
-		0, 0,
-		1,
-		grass_data:height())
-	grass_noise_ids:mul(1 / noise_scale_grassy, true)
-	grass_noise_ids = grass_noise_ids:convert("i32")
-	grass_noise_ids:mutate("i32", grass_data:height(), 1)
-	grass_noise_ids:mod(noise_h, true)
-	grass_noise_ids:mul(noise_w, true)
+	local p_idx = userdata("f64", 1, particles:height())
+	local p_ids = userdata("f64", 1, particles:height())
 
-	grass_noise_ids:add(grass_noise_idx, true)
+	particles:blit(p_idx,
+				   1, 0, --src x,y
+				   0, 0, --dst x,y
+				   1) --width
+	particles:blit(p_ids,
+				   2, 0, --src x,y
+				   0, 0, --dst x,y
+				   1) --width
+
+	p_idx:mul(1 / noise_scale_particles, true)
+	p_idx = p_idx:convert("i32")
+	p_idx:mod(noise_w, true)
+
+	p_ids:mul(1 / noise_scale_particles, true)
+	p_ids = p_ids:convert("i32")
+	p_ids:mod(noise_h, true)
+	p_ids:mul(noise_w, true)
+	p_ids:add(p_idx, true)
+
+	p_dx = noise_sample:take(p_ids)
+
+	p_spr_eff = p_dx:mul(particle_spr_effect)
+	p_spr_eff:max(-1, true)
+	p_spr_eff:min(1, true)
+	p_spr_eff:add(0.5, true)
+
+	p_dx:mul(particle_wind_noise, true)
+	p_dx:add(particle_wind, true)
+
+	particles:mul(particle_drag, true,
+				  0,      --src offset
+				  3,      --dest offse
+				  1,      --length
+				  0,      --src stride
+				  particles:width(), --dest stride
+				  particles:height()) --spans
+
+	particles:add(p_dx, true,
+				  0,      --src offset
+				  3,      --dest offset
+				  1,      --length
+				  1,      --src stride
+				  particles:width(), --dest stride
+				  particles:height()) --spans
+
+	particles:add(particles, true,
+				  3,      --src offset
+				  1,      --dest offset
+				  1,      --length
+				  particles:width(), --src stride
+				  particles:width(), --dest stride
+				  particles:height()) --spans
+
+	particles:add(particle_gravity, true,
+				  0,      --src offset
+				  2,      --dst offset
+				  1,      --length
+				  0,      --src stride
+				  particles:width(), --dest stride
+				  particles:height()) --spans
 end
 
-function update_grass()
-	grass_delta = noise_sample:take(grass_noise_ids)
-	grass_delta:mul(grass_noise_strength, true)
-	grass_delta:add(grass_noise_bias, true)
-	grass_delta:min(4, true)
-	grass_delta:max(-3, true)
+function draw_particles()
+	blit(p_sprites, particles,
+		 0, 0,         --src x,y
+		 0, 0,         --dst x,y
+		 1,            --width
+		 particles:height()) --height
 
-	grass_data:add(grass_delta, grass,
-		0,             --src offset
-		0,             --dst offset
-		1,             --length
-		1,             --src stride
-		grass_data:width(), --dst stride
-		grass_data:height()) --num elements
+	particles:add(p_spr_eff, true,
+				  0,      --src offset
+				  0,      --dest offset
+				  1,      --length
+				  1,      --src stride
+				  particles:width(), --dest stride
+				  particles:height()) --spans
+
+	spr(particles, 0, particles:height(), 3)
+end
+
+function add_particles(amount, init)
+	local p_ids = userdata("i32", amount)
+	local new_particles, new_p_sprites
+
+	for i = 0, amount do
+		p_ids:set(i, rnd(leaves:height()))
+	end
+	p_ids:mul(leaf_data:width(), true)
+
+	if (init) then
+		new_particles = userdata("f64", 4, amount)
+		new_p_sprites = userdata("f64", 1, amount)
+	else
+		new_particles = userdata("f64", 4, min(particles:height() + amount, max_particles))
+		new_p_sprites = userdata("f64", 1, new_particles:height())
+
+		particles:blit(new_particles,
+					   0, 0, --src x,y
+					   0, amount) --dst x,y
+		p_sprites:blit(new_p_sprites,
+					   0, 0, --src x,y
+					   0, amount) --dst x,y
+	end
+
+	leaf_data:take(p_ids, new_particles,
+				   0,         --id offset
+				   0,         --dest offset
+				   3,         --span length
+				   1,         --id stride
+				   new_particles:width(), --dest stride
+				   amount)    --spans
+
+	new_particles:blit(new_p_sprites,
+					   0, 0, --src x,y
+					   0, 0, --dst x,y
+					   1, --width
+					   amount) --height
+	particles = new_particles:copy()
+	p_sprites = new_p_sprites:copy()
+end
+
+:: sakura.lua
+include "leaves.lua"
+include "grass.lua"
+include "particles.lua"
+include "cursor_effects.lua"
+
+
+leaf_noise_strength        = 8   --How many pixels one noise unit moves the leaf sprites
+leaf_noise_sprite_strength = 2.5 --How much one noise unit shifts the sprite index
+
+grass_noise_strength       = 3   --How much one noise unit shifts the sprite index
+grass_noise_bias           = 2.5 --Which sprite index a noise value of 0 correlates to
+
+
+--Scales the noise to element mapping also affects how fast the scroll moves
+--Larger values: Larger waves but faster
+--Smaller values: Smaller waves but slower
+noise_scale_leaves = 4
+noise_scale_grassx = 1
+noise_scale_grassy = 0.5
+
+
+frame       = 0
+draw_grass  = true
+draw_leaves = true
+
+
+--Some constants for easier conversion
+i8MAX         = 0x7f
+i16MAX        = 0x7fff
+i32MAX        = 0x7fffffff
+screen_to_i16 = i16MAX / 480
+
+
+
+--Debug
+--[[
+cpu     = 0
+outline = "\f7\^o1ff"
+--]]
+
+function _init()
+	--[[ 	if (regen) then
+		generate_leaves()
+		generate_grass()
+		exit()
+	end ]]
+
+	init_noise()
+	init_leaves()
+	init_grass()
+
+	add_particles(1, true)
+
+	for i = 0, 120 do
+		update_particles()
+	end
+
+	init_mouse()
+
+	--Set up "frame buffers" for fast blitting to the screen during draw
+	background = userdata("u8", 480, 270) --Static elements that never have to be redrawn
+	draw_buffer = userdata("u8", 480, 270) --For leaves and grass that have to be redrawn every 2nd frame
+
+	set_draw_target(background)
+	spr(1)
+	poke(0x5509, 0x7f) --Set the Write Mask to write 0x40 to the table selection for masking
+	spr(2, 0, 0)
+	poke(0x5509, 0x3f) --Reset Write Mask
+
+
+	cpu_new = stat(1)
+end
+
+function _update()
+	if (frame % 2) == 0 then
+		noise_x -= 1
+
+		update_leaves()
+		draw_grass = true
+	else
+		update_grass()
+		draw_leaves = true
+	end
+
+	if (frame % 32) == 0 then
+		noise_y += 1
+		cpu_max, cpu_min = 0, 1
+	end
+
+	noise_x %= noise_w
+	noise_y %= noise_h
+
+	noise:blit(noise_sample,
+		noise_x, noise_y, -- src x,y
+		0, 0,       -- dest x,y
+		noise_w, noise_h)
+
+	update_particles()
+
+	update_mouse()
+
+	frame += 1
+end
+
+function _draw()
+	set_draw_target(draw_buffer)
+
+	--Draw leaves if the last _update updated the grass and the other way around
+	--If a draw misses an _update it draws both parts of the image at once
+	--In which case the particles are drawn twice bc I could not figure out how
+	--to draw the leaves and grass to the buffer w/o messing with the masking bits :c
+
+	if (draw_leaves) then
+		clip(0, 0, 480, 168)
+		blit(background)
+
+		poke(0x550a, 0x7f) --Set the Target Mask as to not draw in front of elements
+		spr(leaves, 0, bg_leaves)
+		draw_particles()
+		poke(0x550a, 0x3f) --Reset the Target Mask
+
+		spr(leaves, bg_leaves * leaves:width(), fg_leaves)
+		draw_leaves = false
+	end
+
+	if (draw_grass) then
+		clip(0, 168, 480, 102)
+		blit(background)
+
+		poke(0x550a, 0x7f) --Set the Target Mask as to not draw in front of elements
+		draw_particles()
+		poke(0x550a, 0x3f) --Reset the Target Mask
+
+		spr(grass)
+
+		spr(3, 0, 190)
+		draw_grass = false
+	end
+
+	draw_mouse()
+
+
+	clip()
+	set_draw_target()
+	blit(draw_buffer)
+
+
+	--DIAGNOSTICS
+	--[[
+	cpu_old = cpu_new
+	cpu_new = stat(1)
+	cpu_max = max(cpu_max, cpu_new)
+	cpu_min = min(cpu_min, cpu_new)
+	cpu = (cpu_old + cpu_new) / 2
+
+
+	print(outline .. string.format("CPU (average last 2 f): %.1f%%", cpu * 100), 4, 16)
+	print(outline .. string.format("CPU (max/min last 32f): %.1f%%/%.1f%%", cpu_max * 100, cpu_min * 100))
+	print(outline .. string.format("RAM: %.3fMB", stat(0) / 1000000))
+	print(outline .. stat(7) .. "fps")
+	--]]
+end
+
+function init_noise()
+	noise_sample, noise_meta = unpod(fetch("assets/perlin1.pod"))
+	noise_sample = noise_sample:convert("f64")
+
+	if (noise_meta.format == "i8") then
+		conversion = i8MAX
+	elseif (noise_meta.format == "i16") then
+		conversion = i16MAX
+	elseif (noise_meta.format == "i32") then
+		conversion = i32MAX
+	else
+		conversion = 1
+	end
+
+	noise_sample:mul(1 / conversion, true)
+
+	noise_w, noise_h = noise_sample:width(), noise_sample:height()
+
+	--Create a 4x larger userdata that the "sampling" window scrolls across so that 
+	--the update can be done in a single blit
+	noise = userdata("f64", noise_w * 2, noise_h * 2)
+	noise_sample:blit(noise, 0, 0, 0, 0)
+	noise_sample:blit(noise, 0, 0, noise_w, 0)
+	noise_sample:blit(noise, 0, 0, 0, noise_h)
+	noise_sample:blit(noise, 0, 0, noise_w, noise_h)
+
+	noise_x, noise_y = 0, 0
 end
 
 :: .info.pod
---[[pod,created="2026-01-15 17:19:56",modified="2026-03-03 11:18:24",runtime=24,workspaces={{location="main.lua#1",workspace_index=1},{location="gfx/0.gfx#7",workspace_index=2}}]]
+--[[pod,created="2026-01-15 17:19:56",icon=userdata("u8",16,16,"0001010101010101010101010101010001010d0d0d0d0d0d0d0d0d0d0d0d0101010d1d1d0d0d0d0d0717170d0d0d1d01011d1d1d1d0d170717171717170d0d01010d0d0d0d0717171717171717170e01010d0d0d071717171717171717170e01011d0d1717171717171717170e0e1201011d1d0e171717170e0e050e0e120d01010d0d0d0e0e05050e0515120d0d0d01010d0d0d0d0d0d0d05150d0d0d0d0e01010d0d0d0d120d05050d0d170d0d0d01010d0d121d050505150d0d0d0d0d0d01011d1d1d12121205150d0d0d0e0d0d01011d1212121215150d0d0d0d0d0d0d01010112121215150d0d170d0d0d0d010100010101010101010101010101010100"),modified="2026-03-03 21:31:20",runtime=24,workspaces={{location="main.lua#5",workspace_index=1},{location="gfx/0.gfx#2",workspace_index=2}}]]
 :: assets/.info.pod
---[[pod,created="2026-01-27 04:18:13",modified="2026-03-03 11:18:24"]]
+--[[pod,created="2026-01-27 04:18:13",modified="2026-03-03 21:31:20"]]
 :: assets/grass_data.pod
 b64$LS1bW3BvZF9mb3JtYXQ9InJhdyIsY3JlYXRlZD0iMjAyNi0wMi0wOSAyMDoyNTo1NSIsbW9k
 aWZpZWQ9IjIwMjYtMDMtMDEgMTA6MDE6MDAiLHJldmlzaW9uPTkzNjQ4XV0KbHo0AAYSAAB3HwAA
@@ -4778,10 +4816,10 @@ NNAGDB9iMAscHzSgBwwfNgAOHB84wAYMHzeAAAsvZWZAIhwfZgAQTB9i4A8MHmEwAA-wDyofM-AP
 HB9h8D8MHzRQAQwfZMAYDB81wAEMC4AAL2Zk8AUMD3AGDR800BgrDtAPDxAAHB8yEAAsHzMQAAwf
 MNAGDB85IAYMCnAAUDAwMSIp
 :: gfx/.info.pod
---[[pod,created="2026-01-15 17:19:56",modified="2026-03-03 11:18:24"]]
+--[[pod,created="2026-01-15 17:19:56",modified="2026-03-03 21:31:20"]]
 :: gfx/0.gfx
 b64$LS1bW3BvZCxjcmVhdGVkPSIyMDI1LTAxLTE3IDEwOjM1OjQ4Iixtb2RpZmllZD0iMjAyNi0w
-My0wMSAxMDowMTo1NSIscmV2aXNpb249MTUxXV1sejQAxjoAAK5vAADzIXtbMF09e2JtcD1weHUA
+My0wMyAxNTo1MDowMSIscmV2aXNpb249MTU1XV1sejQA1zoAALxvAADzIXtbMF09e2JtcD1weHUA
 QyAQEATwVgcQB8AX0BfABxAH8FYsZmxhZ3M9MCxwYW5feAgAxnk9MCx6b29tPTh9LD4A8XEo4AEA
 AA4BAAAE-TD-HQWN-gr9pf45-Zj_CC3_D-2k-jv9lv4JDf4RHS79mf5CHU79jf4z-ZP_Tv2D-j-9
 jP5S-R1u-UcuHf5F-Yb_Vv0Zrv1C-k-9bm7t-ln9Fv4B-Tz_Uf1sjg0uTf5f-RP_BP06-mr9Uv5z
@@ -4852,200 +4890,200 @@ A1MEsSn_CP3knv0Sbv0yswbwOP9p-hXNPt3_Aw1e-QL_Dv1FXv3-Df4PXQ4t-kj9-1huDf5-HW4d
 -gP9-xv_X-3-ff4r-f--BC79Gg79-3L_AP3-sP4e-f8mRg3xCh79-zoO-UoOTf4B-f_g-hb9----
 5r79-1yjA5D-wg79HS79-6l1AGC6vv3-w35aCfEiIw79-3Yu-Qcunf4f-cwe-TZe-WAOTT4t-h-9
 0A79RZ79Tf4k-dku-c-_AP0c-gn9-wEA0PYu-Sje-f_Lbv0MPm3rDAcBACLHHg8AS4mO-f8BACDL
-ThMAUL0_-f-XNQAtwG4iAID--5-_Cv3-rnAOsLH_DP3-sv4I-f_5LgAzvi5dWgAOAQAfzjIQCz8w
-LjU0EAMv8P8BAAzzC9QVcAUPFfD-xAUecC7w-8MFkB7wBR7w-60OCQBkogWABZAFDAAgcAUYACIG
-FQwAE6ALAPALHlAFDpAFHuAOBUAV8P_jDlAOoB7wAB5ABQ4OACBAHg4AIC4wDgDwDXwOBfAVHiAe
-oC7wAC5ABfAXTvD-UB7wFS4AHrATAPEMUB7wE24V8P9OHvAVTsAe8AEFHkAFLvAQPgU_KQAgFwUo
-AKACLkBO8Axu8P9UEgDxWw4wHmAOBQ7wAi5QTvAJbvD-Tg4FUAUO8BceIC5gHvADBR5gTtAFPhV_
-8P9QDmAFDvAWBQ4FDgAFLmAe0B4gBR6ABS6QHgW_BfD-Ug5gDxYF8AcewAUOAA4FLmAu0B4gFQ6Q
-FR5wFW4wDiUiAFENBQ7wBiIA8gkugAUe0B4wBQ6gBR4QBU4lPlA_JfD-ThUjAPAILrAFDgAekAUu
-wAUOMC6gHiU_BS6gTgUhAPEKcBXwBi6gLhAOoD6wFTAugD4VbvD-YQ4FcDkA8CQVDpAeBQAeoE6g
-JSAFHnB_8P9nDgUOYB0e8AYugB4QHsAuoDUQBR5QHgUOBS7w-2oecBU2APAeHnAeEB7QLqAeBRAF
-DgVABW7w-2secDXwBi5gLhAuwA4FHqBeMAUOBU7w-20uGADwERUOUAUOIC7QDQUOoBUuBSB_8BAV
-8P9MBS5wJfAHLjAF2gCA0A0FHqAFLhAcAGEABfD-TT5SABAgHwDwFsANBR6wFQ4ARS7wDx7w-1Ie
-FXAVHvAFPhAeQBUusAUusAUeJS6JAfAQBy7w-1QONUAOFS4F8AQuJQ5gBS6gDQ4FDrAFDhU_UF0C
-8AQ_8P9WHTUQHnXwA06APqA_kA01kALwEAQ_8P9ZJQ4lDhUQFT7wAG6QFQ6gLpANJT4VPgAe8AT-
-APAPXAUeFWA_BcBOAC4VcBUOoCUOYDWeFQ7wBQ4l8AsODQJwNaA_BSBeYBwA8CEABR4FDiUuEDUe
-8AgFLrAusC7w-yoe8BMNJWAFTmA_JUAeoEUuBT7wEgUeIA6AHsBhAPAFKS7wEyVQBT6gLjUgHqBF
-XvAUBQ6YAfAbHtA_8P8oLvAUJUAu8AA_FQAeoAUNBV7wCQ6gFQ4gTlAe4BUO8A4V8P8JnQJAEyUw
-LosCERUmAPAGLvALHqAVDkBOMB5QBYAlDhAOBfAGBQHwEAg_8BIlDhAe8AceBS6QDRUe8AwukAUO
-QA6VDkAekCWWAvEN8AQNFR6ALvD_LvASBU4F0CVwXoANFQ7wDQUekNcCQKUOJQ6NAAAgAjDwAw3h
-AmAe8P8BPtBPAxA_CgNAcD6ABWsC8B8OBQ4QLkAFDtAFHjUusBUeYBWQDRUOcBXw-wUVDsAe8AMe
-BcAVPrAugDXwDgUesQPRDuAeEE5wDgUQJQ5QFbECUB5QJfDyfgPwDhUesA7wAwUOBbBewAUekA0l
-8A8eAB5QHtAuIC6ARwPwA1AFHnAFDR5ABR7w9AUeBS7QBTIAIAIOMwBABS7gBeAAADQAcT5ADtAu
-MBU0AEBAFQ6AiQJwHvD3BX6gBUoEADEAcMAFDvABLoAgAQAxAIAwHtAeQBVwLjEAEAUxAPABIAUe
-8PpOBU5wLqAF8AI_sC8AEQUwAHBgHvAGBW4g2wHwCzAVcB4wJTAFHmANFQ4QBR7w-iUOBW5QDR6Q
-TAQANAAwAgUe-AMAMwBwHhU_EB7ABWcA8QUeQBUwBQ5wDTUe8P8CFY4dDj0egKoEEsAyABElMgBT
-FQ4FEC4zABFgmADhIAUeYAUNJQ7w-wheVQ1wBTEBLrA6AVKAHQUegDUAwSAuAC6gBS5AFWAFHjUA
-QA4FYBVOBXDw_T6FHmAFSwUB0ADxAh0ucB0FLoAeoB6AHQ4wLgAOiARCUCVQLjcAoGAFLvABHvD8
-jgX1AAJqAMENBS5gHRUekB6gLnBdAQChBJIOBQ5QJUAFHlA3ACAeBWMBQPD-Bg5kBPAR8AAVDrAF
-MA7QDS5gHQUuoB6gPmAFHlAVLpAFHnAVMAXhAxEQSgTgBfADDvD-Bw4lDjAu8ADcAaAgHnAeMA0u
-QAUNEATwCA5wHhA_QA4FHgVAFQ4FDpAucBUgBS5gPwAAAwQQBBgBUDUOIC7gIwMSMDsAIDA1PgWw
-cC4QBQ4VDhBeUCU3ADJFLnA1AJEO8AUF8P8IRSCmADCQFQ7MAfADHjAVHiAFHQUu0BUOYB4wJV4A
-3wAAFQIwgBUOMAEgEAWuAADcArHw5w4VkA7wA1UeBUEAEAWmAfAHFVAeMBUuRS7gJVAuUCUuEB4F
-UAUucFwDIj6QPADh8AQOFfDnLpAO8AQOVQ46AACNBfAFUB4gJR5FLvABJUAecBU_EBUOQA0WB0Cg
-FQ6gOQCA8AoeBfDpLoA3ANAFDTXwABUecAUecA4VGQJhMGUu8AMlIwJxZS4FDhUgDcgCMaAVHnUA
-ECUQBFDwDB7wzDIAgPAEHg01DuAVDgLggCUeBQAFHjBVLvAFFR4XBoAFLhA1LiUNBWICAKEFER7z
-AKAVLvAFHgA1jhVOnQLwBT7wsxUOBVAOcBWgDh01HsAVHkAV0wYAggAgHTWZBzABFR45AQD7AGAu
-NQ0VYBUlAPARcA4lLgAe8AYOBV4F3gVgHvAEFT7wtAU_MA5wFbAOHSVEBCAgJY4B8AIeEAUdJT5Q
-BfACBU5AFR6wdS8EUOAFLmAO-gdA8AJeFRABkPADFS4ABfC1JbQGAP0GMLAuNfQA0BA1DhCVMBUe
-EC0VPnCNAwALA0Ae0E4lswIAOQiAFT4wHsAFEAWsBYAMHvACFQ7wvFUCAAIGMLA_NbYDsQB1DoUQ
-JR4AVS6Q7QGQDlAV8AUlDjAVCwTwBw4FEDUuQA4FwAUANQ7wER7wAT7wqgUnABEeQgDwBSUOBR6A
-lT4wHlUeECUdFR6gDvADJAHwCA7wBwUeBRAVDiAVwA5FLmAusB0VDvATXwOA8KoOBfAFFQ50AVAe
-EA4VDk8F4w01DgAOoD4FDiBVHrAeRAAyIAUugwDwCBUOIB7QJR4gHkAusA0OBR4V8AQeoAUOPQMg
-8KvQAfEIYBUesB4gHhU_UB01DvAGBS0FLsAO8ARvAyAwJTMFAPwBECCmBYAOQB5QFbANFYUAUAU_
-gAUOfgZwrQ0e8AUVUMwFQDAeFQ5JBZMNNQ7wByU_0AVHAGFgPuAVDgAyBfALBbAFDlAeUAUeoA0V
-DpAdDnA_oB7gBR7wrQ2iB8AVQA0ewC4wTgUeEBXBBkIHFU7gRQBRFXAuBdBFADAwNZA0BKBgHqAl
-DgUgFTANYAARsGAGsPCvFS7wBAVABR7AeQFgXgAlPvAG6gZh4AUAFfABjQRQkB4FDsCnAAH2BZEu
-UB5gLoAlDjVJClBgLsAe0GUEYLAFPgXwAiEDAFwF0mAFPjU_8AclHgAe0EUuCgAuAIEwHgUOsDUe
-UAMDALAEYC6AJQAVThoAQU7QBQ5JAHGyTvABJRANngDxAHAFPhU_8AgVHhAuwDXwAkQAoFAVHiAV
-HrAlHmCOBQGGBTBgDoBkBhAVYQUwPvAAkQAw8LUFQgGREA0e0BUOgJ5AzADwCQUgHrAOBYAeBYAF
-HkAeYDUeACUOsBUuYBoAgBUegBUe4C5gRQAgACU4BtEO0BXwBBXwoGXAFQ4ASABBkA4FXlIFEAAu
-A1GwDpAekAUHIIB10AMgcAUPCSAOANwAQOAuYCVYCSDwAkcA8AVgxQAF8KIuRZAVHQUewCUegCU_
-ICMCYA7wACUeIEkIA0oA8AgOsHUOoAU_cDUABR4QDnAlDsAugCUwDocF8QsFDvAEdR7wrFUtABVA
-JR7QBQ0VDoAlLiAuEEcAIA4wEwQgDqBIAHAgDgUO4GWgYggwJS4gOgMgwC5lBRAQBwrxCQUOwIV_
-8K5VPVAVHgAVsB0FDnA1HiAuIGUFEIBpBEAAFQ5g0geAkCUANfADlUDXCOEVLjAOgD6QBR4FkAUO
-NXkH8QeQZT7wuWUNFQ2VoB0VDlANJS4QPiAF7AUQRTkJERAwAvAFsB5gRQA18Ad1LgAdFR5wJR5A
-BXCDA5ElHrAeJQ4F8AeAAEDwwfUGVgkQMJMGQCAeBTCbC4FQBR0VHhAOBdUKELAOB5F1DrAOFdA1
-Dj2tARBApQVQHlAlDtBwCxAIxAOgHvDEHiAlDgWeJboHIAUgUwBhLkAFHhAu4gcwIB4gowAgwA66
-CQCvBjAQHgVXB7IFDQ41HnAVHlAeMN0IcC7gBS7wCQW0BpDwwy6gThAeJXCNABANdgBQUBUOEC76
-AyAgBS4AADABAFIAQDAVHhV_AbAFLjAFTlB1DSUOcNcI4iAeICUwBW7ABS7gJXAOXALAwwUewD4w
-DiVgLRUOFwEgMC7nChBFPAEwMEUeTQDwIxAFDTUeoF6gRQAO1WAVDoAOIC4gVR4gTqAFHtAVLgVw
-HjUOBfDBFR7QPkAONQ5AHRUOOgEQMDEDIHAlyQMxDjBFNAFwABUNJR6wPjwDIBCl7QUQkAYBQUUe
-QC6ACvAGsCUukA5FHgXwvxUe4BUuQDUeMB01hAFiLoAFLmANSwAgQEUtBzEdRQ4LDvAIhUA1UBUO
-oA4QLjAlHmA1kB6QLgUewEU-AkCQPvCsCQYwFS5QSQDyCEUuMB4FkB5wFU5QBQ5QRR6QFQ4N9QEQ
-XAqxZXAlHjANBbA1HjDOA1AANR5Qft8GsTA_YG7wqRUe8AINCgXxAEUgDg1FHhAlHpAuYBVOYDAC
-0HAlDpWu8BUlHiAdsFWlAXAAPpVOBfACBwOwPlA_8KslHgUwHrCvAZAuVQAODQ5FIEWJAKE_cAUO
-gDUeQBUNlgZx8Cc1IA0O0MoBcfAGnvAHDgVIA3Eu8Kk1LlAuQACgPkVOFUBFcC5gJZMJ8ASQNR4Q
-FS0VLvAMFfALRQAdDuA1PAAQJuoAAGMGMPCpFToBMKANFe4JcQAOVU5gDjWxCBGQzg1AAAUtNX4M
-cHAO8ANFDR6VBFAAFR7wHVYKEDD8CSDwuj0AUR6ADiUNpQ1QRUAeUDXRDpCgBQ01HVXwDhWpCDEl
-ABW1DDEO8B3ACyAwDpcIcA4F8LoeBQ5JA1CgDgUdZVYOMAA1MNoDsA0VPoAVDrBNJR4lyAYgDpBh
-CbEFRfAENQ7wHBUeMAMA8AKAHvC8PoANBS6wPg1lEAUOIA4EMA4gFdsDgBVQFcAdFV4A3wEAPgkG
-PwAQG4IAIC4wWgJg8L4eBYANEgggLVXSB1EgBQ4QVVsEcSXADRVOIAV8ABCA-QtAABUwNY0EQAUO
-8Bp9ACEuQMIQEazlChAOwAxQ8ABOLTVWAgDaBSAdFagQcDANZR5gHT7vDABJAxFAqw4BsRAiHvBL
-AADZAwJMAACnCYDwoQ4wHsAVDqkLYAFeBQ1FMCYHIQ4FTgBwHiANNS6AHeoKENCKCRBAEgcQ4KgJ
-kPAELvAZBQ5AHmEGkZAFDlA1HgXwoEsAwh5QBR0e8AB_ZSAeEHQDEEAyCFAdFS6gDYAFECAPBDBA
-BR72CzAwPiB3CDAOwC7zCzECDgUVEVJgBS4ABSsNUDBFPvCi3wDQoDUOUBUu8ACudR4ARZEAgCAN
-FQ7AFR6AUQAQEIcEEBDbDAFdBUFwDgXAKQIQAGQIIPAScwYxYDUe1w9gBSAlLvClmgBQcAUwNVAC
-BxAeSxAQZV4DEYBWBAFXByGAFVgAQA5AFRDsCwDHB0AVHgWwJQbA0C4FHvAPZQ6AJT7Q9QVQAAXw
-py5jAEAFDiB18wDDHuAFThAOBS5FHgAl2Q6S4BUOgBUOEA4gUgAREJgHMFAVLqYNAFMGEMDXD0BF
-bpA1VwVAUAXwqa0HYWAFQJUOFTwIAPAEUR4QHjUeJgMAiQRBDpAVIE8AQAUOEDXqCzAeICVIAiEF
-kKQGMMAOJX8CQX6gBV6VCUCoBQ6ARQAwFS1AhgPwAS5VDtAFDT4QHiAORQ4lLpBbAQFHDBEg0wsA
-TASAYBUOECU_MCVQAACSCyDAHXsMQDUu8ACJEUACHvCr7QeSDhA1HTAFsB5FhAsQAJYGMEU_kHAE
-ECVQABAQnwkAlwAgABU6BjBlHnBbCABSAHAVDrAdTuA1AwswPvAD2AJwDoA_IEUNIE4Aog4wNUBF
-PlA_FR79BvACACWgBQ4QDjAuIB4lHkAOIBVkEABdDBACGQ-BFU0OJT6QNR7wAUUOBwgQr3sAAJYF
-YAAFDtAONXkGIDBlHwdhPgUeBXA1VQQRkBcEAHISMCUeUPYA0AXgHiUe4A0lDgCFDZWQBHDwAfUK
-HvCy3QngYEUe4CUeMCUeIFU_UD5cABBQ2gIh8AHBASBAFVECAB0HAJUJ8AwABfABJY5wDSUeRQ4F
-btUAJQ7wARUuEMV_8LShBRBV-QUBSgAALwoA6hAxPjANWRFAARUekFEOUCA1HmAORw3wCfAHHkUe
-cA01vhAetT4lwBU_cE7wuQ4FQOUBQB6ANQCXDAB8ADBVPkDZADAeEB0wCIACFQ6gFTAlDv0CUCUO
-BUAeOQzgF1V_kC4ljmVgPvDKJR62AFIegEUO4HUNUFU_IC4A_AsgDgCuCwBWBhCg3ARwHhUeFS5A
-DcMH8ALwFh0lXvAO1S7w0QUugGUgdSUDAKkD4HUuAC4FAA4VDTUdNfADcg_ADhAlHhVuUB13APAG
-Ew41XvAWFX7w0xUOJR4FQCUQxQ7Q7QPgAA5VLgAuIBUNNQ0VABXfD3AeoCUAFR4NOgAwBSAl2wzw
-ASVe8B8O8NcFUCUQJcAlHrDtCiAuAIwHYS4FIBUdJToAwQEVHrBFHgUNFU5wHaQFAJUI4RUu8P8E
-BYAOcFXAJR6gCg6hAA4FDUUuQBUNVaABoA7ABR0uHRVOgB38CBBVhRQAaxJQBx5gDpA7CiAuoAQE
-kC4FDWUOUAUdRTQAMBUOwAgDYBUNFT6gHXUFgCXwByVO8P8JfAwgkCXWDpCQFQAFgAU_DWVPFiIN
-VTQAEB3IChANTRURDasF8A-wBzUu8P8MHlAOJYAV8ABFkDUNBVAVHh1VLkAFHTXbAzDALQWCAxDQ
-ZgDwJhAV8AY1PvD-Dh5gTmAF8AFFHSAlPQUdFTBFHQUdJS4wFQ1FDtAVHqAtFR4FEA0VDuANBRA1
-YAvxDMAlPvACbvD4DmAlTvAHNS0VHYUeIDUtBR0lHjUA8ACwJR6ABS0VLjANBR7gDXVAB0E1PvAB
-igIQ-AMIgPAHdU5lPhAlMwBQDjAVHTUsC8BQNR0VPkANBQ4F4FUGC8AlDpAlLvACPQUe8O8hETGA
-BbAYCrBOUA5VLhAlLVUOIDoAkHAtBR4gRQ41PmEWMdA1QIoK8BKQBT7wAhUNVQ7w7BV_YA6wBT4Q
-FRAV8AIucFVOJS1FLgA6AIFQLRUeAFWOcJgFIBUA6QQQQJgJUD7wAiUukwzwFF4F8OAFbjAF0B11
-PfAALoBVLgA1HVUOJR1FDlANNQ5FjqAdbw0gcA2HDAAJEgC7DxBQvxFAfvDiLu8P8AMOwB1FEGXQ
-LrA1HhA1HSUNRQ1bClBADWV_4LMMMA0lLuEPACIEEFA-AGACFT5wLhWjAhHsPgCQoA4dRTBlDRWg
-QQAQAGkBcDUNVR5AJV5VAjAwPSUwCCAeANcFAPUTYAIVLrAeFbQTYO8tABVwHYwPciVNFXANHsA_
-AADECEAeMBU_yAKgED0VbpANNS5gJdgEIC7gSgJA8PFFEIUCcA1FIC5wpVCuBmENFR4ARQ1MA-AF
-DTUeIBU_8AoVDi0VTuAdJR5QHSUCEAFxEpDqFS51AAUOVRBGAfAMYB4QlSAVDtAdFQ4gZQ1VDWUA
-JS4F8AkNVR7wCQwRUIcRcNBlHvD-DRUxA0BQHlBV7wAQ4DIM8AJFDVUNlT7wCQ01LvAHDRUOYFEJ
-IIUeKBnwDiE1QB5wRS4VDtANJR5AJR2lDiVO8AkVXpAdRUANNAQA7hUQRbkJQAXw-yC4FtB14CUe
-UGUdVS4FTvAIRAaQAA4VQB0lTjUACRIQJcQNYLAe8P8gFWAI8A1l4CUOcEUddT4FHvAHJQ4wDjUQ
-DRW_NXAlDgVwwBFAJfD-HSwCECCfD6AlDtAlHnBFHWU_AQGALR5QJR01LlDzGCBwHb0CUB7wBD5A
-6RYgEx37B0AO8AIl8wHAVQ11LhUO8AQNBS6A-wFhwAVQFQ0lgQigCBUdLvD-AW7QHekFAiwFEOBe
-AmEONQ11HiURADAugCVPByAQHcoKsFUe8P8UDsB_DQ6wSAMAMxUAdgWwHR4lDTUNNQ4lHuDTBwBS
-EKINtQ7w-xYFLuAN_g0AtgFR4BUeQA0sEQIuAFAOBcA1Ll4HgAOFvvD-Gi4wySJAHjUewOkKAEUF
-IOAVMwywHhBVDXUOFZAlPqBzApCFPgAu8P8iTtVcEAClAXEDJQ7gJQ4gKQBQHWUeBWAzAQADE6Hw
-AjUe5fD-Mx4lKAAQAigAAGoJQBBVHTUJDhBQxAAQsMcA0wUtLgU_tfD-MwUONaDYACElECsAgC0l
-XlAFDSVd1gTzAPACLQWeEF7w-zhlDnANFSgAAHQC0UUtJV4FIDUeBQ2VEA3mFhAd_RkwSGUdTw8A
-Wgcg4CWRDqBVHTVOBRBeRS5FsRIQAJcCYE7w-09VXYMOQR7wAFV-C9AtJV4QTjUupQ5FICUgowWQ
-8P9SdS0FLgUewhEgAEUlAPADNR0lXgA_NW71BD0VXvD-VkV_yQcA9gAQALQMAMIGAIsZsc71AQ01
-XvD-YxU_HAAhBQ05EvEIRQ01-gFQjpV_8P9mJU6ANQ7gBR0FHgAZAPAF3tA1-gDw-2EfHQ8SUCUe
-LXA1DtBrEtAFHUUNRa7wCl7w-2UvHABgZW0gHQ7gsQMAsAPwAkWe8P_FHx0vEnCVHR4ADS7QUgAA
-GQAgJQ7zG7GFDx0-EtBlHQ4dLswQQEUNVQ5vGxCGMwCg8AQlHRUuwAUdZRYA8ARe8P_GDB8dHPAH
-VR7AFQ1lDWUOAwHThRwAGxzwCUUusAUdVRQAcIQcEAss8AqxCeAdRR2VLvD-gxwgCyzwDE0V4Q01
-HZU_8P_AHDALLPAOEgDwBCUdFQ1lPvD-fixACyzwDyUuwFVnBAFMAOB8LGALLPARFR7QdQ01HgYa
-cHoscBss8BGpAjF1HSUTAHB4HKALPPARwgBB4DUdBVwB8RR1LMBMkD3wBCUe4DU9JV7w-3Ms4Cwe
-UAUtJS3wAjUO4DU9NSIcYHA88AELHTULIA2VhQTwA-AANS1VPvD-bDzwBB0FPhDl4NgP9AjwACU9
-RT7w-2k88AcNBZ4FbjUesB0lHi0A8ANkPPAGOw0FLkwuLA4VLiUukB0CChElHAD0CEcLDPAFbNDb
-DBUeXB5MPkUuLRUAPTUuHwDwCkYr-AbwA5tcFWwufC51DRUdVT7wASU9JQ7ZAPAERSsM8Bdr-AMu
-jB5FbVVu8AAlHToFAH0I8gZFGxzwFkv8BR6sHiX9AgUu8AAlLTU1APAFCyzwFTv8BD6cPhX9BQUu
-BbANJS0TAfEGREzwFSv8BB68PhUtRR0FTdWAHQU9GQDwBwwLLPAUK-wNPWUtNV0FTfUAMC0FLUWG
-DND-QywbDPATDBv8Cx21wAJh3UWtBS1VGwDwAEIcACsM8BP8Dg0lLmUNNdYGcB0VvcUdJR0uAvAE
-QgwgGwzwEvwRTgwFDRUN1Q31EOEJ8AH-QQwwCxzwEfwRLhwVTfUfwwHxCi7w-0AcMBsM8BD8D00M
-HQU9hS7FPUX9AhUbAPAKPxxACxzwDvwDBYwdpR2VLmUtNQ1F-QI1Lh0A8Ak_DGALHPAMK-wCFVwd
-FU2lnjU9BR11HfXpA-AFPQxwCxzwCzv8BA0lHTUNtc4lDfX2AsA7HIALHPAJK-wFFQ3iD-BUNU4V
-3iUNlR0FLUVthQ4FXvD-OhyQCxzwBjv8CCUNFf4PJQ2FTdUNZY7w-zgsoAsc8AQ7-A0NFR4FHB4F
-bAXuBS1lXfUHjvD-NxzACyzwAQv8EwUuLB5cHhUuLH4dhU0lzlUejwDwDzYs0Ass8AD8FQUePB5M
-PgVcHgw_DQUNdQ0FPTUeld4D8A8gCwzwATzwAAs80PwWBQ5MLtweHC4dJU4VLUVeJc5EAPBkHxsM
-0DzwAws8sPwZDkwFHgW8BQ48Dh0lXhUdNf4Q8P8eGxyQTPAGC1xw-BkuTAXMLjweDRV_Zb6ljvD-
-HfwB8AoLDAA8UPwbLvwKDjWORf4R8Por8A0sECzwFQsMEBxQ-BwOBfwLDjWONf4R8Pk7DPAMHK4B
-8CYVCwAMABwOIPw7VX4lPgX_C-D0fAs88AgsUAsc8BYcAAwu-DwOJX5VLhV_QJ7w9TxgXPAFLH0B
-wBccjvwwC1wOFX41TlkE8AYSPABcgGywHPAX3vwrC2weFU4dBR0XDAAaAvAKFCxQrPACHPAUC0wL
-HF78ET78EA4MHgwOLaYF8A5VPgXw-xULHPATLPAPHAtsC-wYTvwDC6w_BR11Hj4EEhYcAPAADAv8
-JF78ASs8C4wVDSVuGgAQFxoAQTzwCDsaAHQbPAtsZV6VGADxCAss8AZL-CVefAt8KwwLHAssLhwl
-fh1VHAQTGCEA8AMDW-wnXnwbrAtMDjwOFW4dNS4GDSD-GR8A9AUbHPAAi-woTqwL-AMOFW4NJU41
-HhsAoCzQW-wtXuwLrB4ZABBu3hwgGgvgAPQkLAtQK-w4TiwLTAtMCwwLXM4NJY4VDvD-GRsc8BEL
-EAs8QPw_PitMCxwbHBs83gUNJZ4FHgCwGwALLB78Qy4MCzyPAETuDEWuOgDwBRA7LH78Pi4MCwwL
-fA48LgyeHDW_HADwDAAb8AcbHPASGwy_-D0uG4wLHgzeHEW_FR7w-f4AAToAQL78Pk4ZAPEajgw_
-Vd4FHvD8CzzwBRss8AxbfB4cDvxAPowOPJ4MDjUOFd4FLvD6C0weAPIECFv8UT4MC9x_DCUuFd4V
-HvD5GxkAsQV7-FIe-AMuDI4MGADwBPgbXPAFGzzwAJv8TgtsDvwCXgwrBfAUjhwuFR7w9ytMsA8N
-gAtM0Hv8TwucHmwurA4MHkwOFX4MCwzmA-EN9js8DrAccAtMsAwbHBv8Xh5MPpwOHB5MHgVuPCAA
-8A0rPB4MoFwgG0yQO-xaKxwLHA4MHjw_-ASeCywuXRbwDfYbPB4MDqDsHlAcG-xcG1weHC4MThwL
--AJ_CyzYDvAQ8OUbDNALTC6AG9y_-E8LHCtcOxwLPB4cfvwFfhscTiIA8CfkCyzgLE5wK-wA7vxJ
-C0wLXAtcTmwufA4MDkxODH48ThUe8OMLPNA8TgwOUAv8Bc78UwtcjlymAPAXDgwOjI48XgUe8OMb
-PLA7TE5AC-wJfvxSK0yuTA4sHkwebB4MbiwqCPAC8OMLTLAbjC4wG-xyGwwbPK5wAtNMHgtMDhx_
-HH4FHvDkIAD1IgscHvxuG0z_AIwOPB4LPA4s-gQF8OMbXJAbbA4MPiAbHB78dV4cjnwuLA6M-gMF
-8OQbAAA9ApBzfgyOjD4cDnwbABDlGwDQXG4QGxwu-HNeDG7cXk8AAHkK9RDnKwwLLJAbPA4MbhAL
-LC78ch4MbvwEXlw_DL4F8Ok7GwDxBxw_-Hce-AQOLF48Liy_8OorPJAbPI4YAPAfc15cKxw_TP4A
-LL7w6yssDpAbPC4cPhAsPvxNGywL-AQ7LA7cKwYLHC4sDizOPCQAEDwkAPARngAsPvxhCxwrzFs8
-WwyeHF4MHizO8OwbTA6QC0weDG4fAPBMXxscC5wOLDsWOxwLLCsMngx_HL7w7xssDgwegAssLgx_
-ECwu-E4bDmwbvB58OwZrLFssHgwuDC4s-gHw7yssPoALLB4cfisMCx4L-E0L-AMLzLsMGxwLDBsc
-Kz4C8BMc-gTw8CscXnALLA4snjsO-GgLTPsAHEsMWx4Mzixe8PA7HADwAQz_AhwO-GEuDA5M_wQ8
-CxxCBPBf3hscTvDxKxx_gP4F-GIeXBsWSwwLDGt8K0w_DH5MTvDvSxx_cP4G-GI_LBsWW1wbLCvM
-ngwLPF7w7zs8bnAeK-4C-D8L-Be7nAvsfgtcXvDwGywOHG5gHhsMC-4C-DIb-B0bLLsMG5w7nG5M
-DgyKAPEaDA4c-gAL-gb8YA5Mqzw7DCsMK6xeXI7w7jsACw4s-gkMzvwGC-wYC1znAPByLhwuXA57
-PIssDqxuHM7w8TsM-gkszvxYfhtMW0wLFjv8Af4H8O07DAssfhz_CywO-Fc_bAsMOwYrTBsGC-wF
--gfw62t8PvwAThxeDC78YgsODGtMG-wG-gfw6mv8ER5MbvwEC-wRC-wEDvwZKwwbPA4b-Af_B-Do
-e-wbTvwCHvwTgwDwMh4cCy78Ems8DvwHbix_HF7w45v8Hy48Ox5MGz78Hz4cDhwuDA78BBusDls8
-DvwGDhw_PH5cLvDbbEv8JS5cHjwrSABAjA4MzigE8In8AAscbiwODCtMC-wGHhwuLI5sPvDSG-wW
-HvwOPpwbPvwJC8wOLC4cvnwOzB5MbhwenC78Aw4cHjyefC7wzQxL-BdO-AlerA78DQvcDiwODP4A
-XA68TiweHG6cPvwEDkyOjD7wyvwBHvwPXvwFbowL-B0eHP4C-AQOHB4M-gFcTvwAHjyenE7wyfwD
-LvwMjvwBjvwnDgz_ArgA-zAODB4sfhs_TE78AA4srqxO8MH8C078Af4GjM48Gx78BwtcG7z_B-wJ
--gALTjwODE6cDhzerG7wvayubK58-iHaKBo1IMBQ1CiQXQ3wrw1ADfCpBQATrwgAUqkNEA0QBwDw
-BvCcDfD--zUN8KUNUA0ADfChDTANQBgA4KENkA1gDfCeDXANIA0gCQASsAcAQAAN8K0FAOCsDfCw
-DfCqDZAN8KQNQBwAEqUHACL-Zx8AERAkABCvYADwB---mw8V8K8e8HEGPx0PEvAoLvBuBk8KAPE7
-qG8dDxIO8AM_8AxO0A3wYF8dHxIeQB6AbvAeDfBdFh8dbxIu0G7wCU7wAQ3wXQYfHX8SPjAeUF7w
-DT7wAA3wXD8dbxKOYG7wDE4PAPEAfJ5gbvAOTvBtTL5QLgA_CwDwC-4O8BA_8CsM8DIOAM4wLgBO
-8BIeAA7wKD8dVABgHg6AHvAn0w7xf-ARayzgDfAEFkvwRg7wAh3wDhZLTA7QDfADBjsGGywu8FMd
-8A0GS0wu0D3gSwYbPE7wUg3wDAZbPE5wDTAt0CsMK1xuAA4QBvBMDfAMayxuUC0gDQANwCucfjAb
-UA7wRA3wDHs8DhsuQB3wA0z_AhAGWyw_8FoWDisuCzwWGwxOYAvACwD_BDAGK1xe8ERvAfAEIAZb
-TA4MC1wu0A4LAAtAPiAeIMolgSs8fvAeHvAWqgEAngHwIyAbHgtsHmwuAF5QCyAbwA4QCwAOEB4w
-PL7wGW7wFQ0wDSANEA1wGw4LfC48jjArUAtweiTwI-4A8BcOEF4ADvAZDTANEA1QW1xOLM4b8BEO
-MM7wF67wFQ0LEA3QG3z_BfAGCwAbgP4DTwDwMxgN0A4AG14s-gQAHvAHCwALMP4CAC7wGj7wGw2g
-DgswPgD_CxAL8An_BPAfLvAhC4ALPhD_CvAEDDAOIP4E8B1e0DcA8DYgG-AGDP4G8AUsAAww-gTw
-Hl7AHvAMC4AOcA6gDCBOID7wAR5cLgwAzhYrDPAaXgBe8BQO8Cw8AGz_AasM8BVuIF7ADhDlI-BZ
-8CgsLiz_AgaLDBu8AA7wBS4gvgAe8BZewAvwBAYLEDsOCw4wbP4Gi_wbDD7wBP4C4A7wB24wbuAO
-QBYrHF4QbP4CBpv8AH7wBQ4A7vAY-gEwTjA7HhA7HJ48-gMWS6z_BPADHgCeAG6IGPAIAe4QPhAu
-ICsMPgv_Fluc-glgHnD_AMACJvsJA-4KSwxuHP4TGzz_FBAeED5g7vABTvAEuQNkLTEuMzA2AgAE
-xgNFLjQ2MwIAEjTUAzsxfSwePR-wBQQODzMAl8ByFw8d8AAd4B3gHdACAG8NHxXAHmBIAB-wBVMH
-DxfwAA7wAA8d4A0PDdAc4BzQAgBfDB8VwBtQACCQNQfwAA8X4A7gnwAAUQAgDQwDAA9VACszOAfg
-VACj4A8N4A3QDx0N0PcATy8VsBxSACDAOg8X0AfgDtAfHdAPUAAOBQBvHdANTxWQXAAhwFsPFw8d
-wAfQB9APF00AYQ3ADg3QDlIAP18VgFIAIeR7DxcfHaAXwA8XDcAPHU0AP28VcE0AIfIBmRcPF7AO
-DRAPHZAMDTAMgJcAD5cBHf8BBAQEAA4QDxceDxIeHRANAD4AH68PFw8OEB4PEgAtPwAhEBA-ABAA
-PwAfDn8AIgA-AH8gDg8SEB1AfAAoDz0AIBBAPQB-EA4PEg4gDT0AIUAgHw4AuAAPeQAkPx4PEq4B
-JkAPEgAfBQAACgAfQEMAIV8QBx4PDi8CJH8HDxcQHg8OLgIkjwcPFwAHDg8OLgIkfgcPFyAODw4t
-Ag97ABQAuQAPLAIhAPUAPw4PDisCIlAHIB8XALUAD3cAIz8eDw6oASVADw4AHwUAAAoAH0BCACCf
-ECcPFwcuEA8OfwAgbxcQBx8XAD0AI18QFwAXDz0AJSEXIDYBH0B2ACEAswAPOgAgEUDtAC8gDjkA
-HgE4AD8QDlDNAiA-EBcPrABbL-AAMwD-gQ_1ChAfN2QAHR43YgAPMQD--wUOTAIPiAH-----rQ8x
-AP-----------------------------------------uUG09N319
+ThMAUL0_-f-XNQAtwG4iAID--5-_Cv3-rnAOsLH_DP3-sv4I-f_5LgAzvi5dWgAOAQAbzjIQUy05
+NS41NhBCMzIuNTkQPzAuNTsQAy-w-wEADPML1BVwBQ8V8P-EBR5wLvD-wwWQHvAFHvD-rQ4JAGSi
+BYAFkAUMACBwBRgAIgYVDAAToAsA8AseUAUOkAUe4A4FQBXw-6MOUA6gHvAAHkAFDg4AIEAeDgAg
+LjAOAPANfA4F8BUeIB6gLvAALkAF8BdO8P9QHvAVLgAesBMA8QxQHvATbhXw-04e8BVOwB7wAQUe
+QAUu8BA_BT4pACAXBSgAoAIuQE7wDG7w-1QSAPFbDjAeYA4FDvACLlBO8Alu8P9ODgVQBQ7wFx4g
+LmAe8AMFHmBO0AU_FX7w-1AOYAUO8BYFDgUOAAUuYB7QHiAFHoAFLpAeBb4F8P9SDmAPFgXwBx7A
+BQ4ADgUuYC7QHiAVDpAVHnAVbjAOJSIAUQ0FDvAGIgDyCS6ABR7QHjAFDqAFHhAFTiU_UD4l8P9O
+FSMA8AgusAUOAB6QBS7ABQ4wLqAeJT4FLqBOBSEA8QpwFfAGLqAuEA6gPrAVMC6APhVu8P9hDgVw
+OQDwJBUOkB4FAB6gTqAlIAUecH7w-2cOBQ5gHR7wBi6AHhAewC6gNRAFHlAeBQ4FLvD-ah5wFTYA
+8B4ecB4QHtAuoB4FEAUOBUAFbvD-ax5wNfAGLmAuEC7ADgUeoF4wBQ4FTvD-bS4YAPARFQ5QBQ4g
+LtANBQ6gFS4FIH7wEBXw-0wFLnAl8AcuMAXaAIDQDQUeoAUuEBwAYQAF8P9NPlIAECAfAPAWwA0F
+HrAVDgBFLvAPHvD-Uh4VcBUe8AU_EB5AFS6wBS6wBR4lLokB8BAHLvD-VA41QA4VLgXwBC4lDmAF
+LqANDgUOsAUOFT5QXQLwBD7w-1YdNRAedfADToA_oD6QDTWQAvAQBD7w-1klDiUOFRAVPvAAbpAV
+DqAukA0lPhU_AB7wBP8A8A9cBR4VYD4FwE4ALhVwFQ6gJQ5gNZ4VDvAFDiXwCw4NAnA1oD4FIF5g
+HADwIQAFHgUOJS4QNR7wCAUusC6wLvD-Kh7wEw0lYAVOYD4lQB6gRS4FPvASBR4gDoAewGEA8AUp
+LvATJVAFPqAuNSAeoEVe8BQFDpgB8Bse0D7w-ygu8BQlQC7wAD4VAB6gBQ0FXvAJDqAVDiBOUB7g
+FQ7wDhXw-wmdAkATJTAuiwIRFSYA8AYu8AseoBUOQE4wHlAFgCUOEA4F8AYFAfAQCD7wEiUOEB7w
+Bx4FLpANFR7wDC6QBQ5ADpUOQB6QJZYC8Q3wBA0VHoAu8P4u8BIFTgXQJXBegA0VDvANBR6Q1wJA
+pQ4lDo0AACACMPADDeECYB7w-wE_0E8DED4KA0BwPoAFawLwHw4FDhAuQAUO0AUeNS6wFR5gFZAN
+FQ5wFfD-BRUOwB7wAx4FwBU_sC6ANfAOBR6xA9EO4B4QTnAOBRAlDlAVsQJQHlAl8PJ_A-AOFR6w
+DvADBQ4FsF7ABR6QDSXwDx4AHlAe0C4gLoBHA-ADUAUecAUNHkAFHvD0BR4FLtAFMgAgAg4zAEAF
+LuAF4AAANABxPkAO0C4wFTQAQEAVDoCJAnAe8PcFfqAFSgQAMQBwwAUO8AEugCABADEAgDAe0B5A
+FXAuMQAQBTEA8AEgBR7w_k4FTnAuoAXwAj6wLwARBTAAcGAe8AYFbiDbAfALMBVwHjAlMAUeYA0V
+DhAFHvD_JQ4FblANHpBMBAA0ADACBR78AwAzAHAeFT4QHsAFZwDxBR5AFTAFDnANNR7w-wIVjh0O
+PR6AqgQSwDIAESUyAFMVDgUQLjMAEWCYAOEgBR5gBQ0lDvD-CF5VDXAFMQEusDoBUoAdBR6ANQDB
+IC4ALqAFLkAVYAUeNQBADgVgFU4FcPD5PoUeYAVLBQHQAPECHS5wHQUugB6gHoAdDjAuAA6IBEJQ
+JVAuNwCgYAUu8AEe8PyOBfUAAmoAwQ0FLmAdFR6QHqAucF0BAKEEkg4FDlAlQAUeUDcAIB4FYwFA
+8P8GDmQE8BHwABUOsAUwDtANLmAdBS6gHqA_YAUeUBUukAUecBUwBeEDERBKBOAF8AMO8P8HDiUO
+MC7wANwBoCAecB4wDS5ABQ0QBPAIDnAeED5ADgUeBUAVDgUOkC5wFSAFLmA-AAADBBAEGAFQNQ4g
+LuAjAxIwOwAgMDU_BbBwLhAFDhUOEF5QJTcAMkUucDUAkQ7wBQXw-whFIKYAMJAVDswB8AMeMBUe
+IAUdBS7QFQ5gHjAlXgDfAAAVAjCAFQ4wASAQBa4AANwCsfDnDhWQDvADVR4FQQAQBaYB8AcVUB4w
+FS5FLuAlUC5QJS4QHgVQBS5wXAMiPpA8AOHwBA4V8OcukA7wBA5VDjoAAI0F8AVQHiAlHkUu8AEl
+QB5wFT4QFQ5ADRYHQKAVDqA5AIDwCh4F8OkugDcA0AUNNfAAFR5wBR5wDhUZAmEwZS7wAyUjAnFl
+LgUOFSANyAIxoBUedQAQJRAEUPAMHvDMMgCA8AQeDTUO4BUOAuCAJR4FAAUeMFUu8AUVHhcGgAUu
+EDUuJQ0FYgIAoQURHvMAoBUu8AUeADWOFU6dAvAFPvCzFQ4FUA5wFaAOHTUewBUeQBXTBgCCACAd
+NZkHMAEVHjkBAPsAYC41DRVgFSUA8BFwDiUuAB7wBg4FXgXeBWAe8AQVPvC0BT4wDnAVsA4dJUQE
+ICAljgHwAh4QBR0lPlAF8AIFTkAVHrB1LwRQ4AUuYA7_B0DwAl4VEAGQ8AMVLgAF8LUltAYA-QYw
+sC419ADQEDUOEJUwFR4QLRU_cI0DAAsDQB7QTiWzAgA5CIAVPjAewAUQBawFgAwe8AIVDvC8VQIA
+AgYwsD41tgOxAHUOhRAlHgBVLpDtAZAOUBXwBSUOMBULBPAHDgUQNS5ADgXABQA1DvARHvABPvCq
+BScAER5CAPAFJQ4FHoCVPjAeVR4QJR0VHqAO8AMkAfAIDvAHBR4FEBUOIBXADkUuYC6wHRUO8BNf
+A4Dwqg4F8AUVDnQBUB4QDhUOTwXjDTUOAA6gPgUOIFUesB5EADIgBS6DAPAIFQ4gHtAlHiAeQC6w
+DQ4FHhXwBB6gBQ49AyDwq9AB8QhgFR6wHiAeFT5QHTUO8AYFLQUuwA7wBG8DIDAlMwUA-AEQIKYF
+gA5AHlAVsA0VhQBQBT6ABQ5_BnCtDR7wBRVQzAVAMB4VDkkFkw01DvAHJT7QBUcAYWA_4BUOADIF
+8AsFsAUOUB5QBR6gDRUOkB0OcD6gHuAFHvCtDaIHwBVADR7ALjBOBR4QFcEGQgcVTuBFAFEVcC4F
+0EUAMDA1kDQEoGAeoCUOBSAVMA1gABGwYAaw8K8VLvAEBUAFHsB5AWBeACU_8AbqBmHgBQAV8AGN
+BFCQHgUOwKcAAfYFkS5QHmAugCUONUkKUGAuwB7QZQRgsAU_BfACIQMAXAXSYAU_NT7wByUeAB7Q
+RS4KAC4AgTAeBQ6wNR5QAwMAsARgLoAlABVOGgBBTtAFDkkAcbJO8AElEA2eAPEAcAU_FT7wCBUe
+EC7ANfACRACgUBUeIBUesCUeYI4FAYYFMGAOgGQGEBVhBTA_8ACRADDwtQVCAZEQDR7QFQ6AnkDM
+APAJBSAesA4FgB4FgAUeQB5gNR4AJQ6wFS5gGgCAFR6AFR7gLmBFACAAJTgG0Q7QFfAEFfCgZcAV
+DgBIAEGQDgVeUgUQAC4DUbAOkB6QBQcggHXQAyBwBQ8JIA4A3ABA4C5gJVgJIPACRwDwBWDFAAXw
+oi5FkBUdBR7AJR6AJT4gIwJgDvAAJR4gSQgDSgDwCA6wdQ6gBT5wNQAFHhAOcCUOwC6AJTAOhwXx
+CwUO8AR1HvCsVS0AFUAlHtAFDRUOgCUuIC4QRwAgDjATBCAOoEgAcCAOBQ7gZaBiCDAlLiA6AyDA
+LmUFEBAHCvEJBQ7AhX7wrlU9UBUeABWwHQUOcDUeIC4gZQUQgGkEQAAVDmDSB4CQJQA18AOVQNcI
+4RUuMA6APpAFHgWQBQ41eQfxB5BlPvC5ZQ0VDZWgHRUOUA0lLhA_IAXsBRBFOQkREDAC8AWwHmBF
+ADXwB3UuAB0VHnAlHkAFcIMDkSUesB4lDgXwB4AAQPDB9QZWCRAwkwZAIB4FMJsLgVAFHRUeEA4F
+1QoQsA4HkXUOsA4V0DUOPa0BEEClBVAeUCUO0HALEAjEA6Ae8MQeICUOBZ4lugcgBSBTAGEuQAUe
+EC7iBzAgHiCjACDADroJAK8GMBAeBVcHsgUNDjUecBUeUB4w3QhwLuAFLvAJBbQGkPDDLqBOEB4l
+cI0AEA12AFBQFQ4QLvoDICAFLgAAMAEAUgBAMBUeFX4BsAUuMAVOUHUNJQ5w1wjiIB4gJTAFbsAF
+LuAlcA5cAsDDBR7APjAOJWAtFQ4XASAwLucKEEU8ATAwRR5NAPAjEAUNNR6gXqBFAA7VYBUOgA4g
+LiBVHiBOoAUe0BUuBXAeNQ4F8MEVHtA_QA41DkAdFQ46ARAwMQMgcCXJAzEOMEU0AXAAFQ0lHrA_
+PAMgEKXtBRCQBgFBRR5ALoAK8AawJS6QDkUeBfC-FR7gFS5ANR4wHTWEAWIugAUuYA1LACBARS0H
+MR1FDgsO8AiFQDVQFQ6gDhAuMCUeYDWQHpAuBR7ART8CQJA_8KwJBjAVLlBJAPIIRS4wHgWQHnAV
+TlAFDlBFHpAVDg31ARBcCrFlcCUeMA0FsDUeMM4DUAA1HlB_3waxMD5gbvCpFR7wAg0KBfEARSAO
+DUUeECUekC5gFU5gMALQcCUOla7wFSUeIB2wVaUBcAA_lU4F8AIHA7A_UD7wqyUeBTAesK8BkC5V
+AA4NDkUgRYkAoT5wBQ6ANR5AFQ2WBnHwJzUgDQ7QygFx8Aae8AcOBUgDcS7wqTUuUC5AAKA_RU4V
+QEVwLmAlkwnwBJA1HhAVLRUu8AwV8AtFAB0O4DU8ABAm6gAAYwYw8KkVOgEwoA0V7glxAA5VTmAO
+NbEIEZDODUAABS01fgxwcA7wA0UNHpUEUAAVHvAdVgoQMPwJIPC6PQBRHoAOJQ2lDVBFQB5QNdEO
+kKAFDTUdVfAOFakIMSUAFbUMMQ7wHcALIDAOlwhwDgXwuh4FDkkDUKAOBR1lVg4wADUw2gOwDRU_
+gBUOsE0lHiXIBiAOkGEJsQVF8AQ1DvAcFR4wAwDwAoAe8Lw_gA0FLrA_DWUQBQ4gDgQwDiAV2wOA
+FVAVwB0VXgDfAQA_CQY-ABAbggAgLjBaAmDwvh4FgA0SCCAtVdIHUSAFDhBVWwRxJcANFU4gBXwA
+EID9C0AAFTA1jQRABQ7wGn0AIS5AwhARrOUKEA7ADFDwAE4tNVYCANoFIB0VqBBwMA1lHmAdPu8M
+AEkDEUCrDgGxECIe8EsAANkDAkwAAKcJgPChDjAewBUOqQtgAV4FDUUwJgchDgVOAHAeIA01LoAd
+6goQ0IoJEEASBxDgqAmQ8AQu8BkFDkAeYQaRkAUOUDUeBfCgSwDCHlAFHR7wAH5lIB4QdAMQQDII
+UB0VLqANgAUQIA8EMEAFHvYLMDA_IHcIMA7ALvMLMQIOBRURUmAFLgAFKw1QMEU_8KLfANCgNQ5Q
+FS7wAK51HgBFkQCAIA0VDsAVHoBRABAQhwQQENsMAV0FQXAOBcApAhAAZAgg8BJzBjFgNR7XD2AF
+ICUu8KWaAFBwBTA1UAIHEB5LEBBlXgMRgFYEAVcHIYAVWABADkAVEOwLAMcHQBUeBbAlBsDQLgUe
+8A9lDoAlPtD1BVAABfCnLmMAQAUOIHXzAMMe4AVOEA4FLkUeACXZDpLgFQ6AFQ4QDiBSABEQmAcw
+UBUupg0AUwYQwNcPQEVukDVXBUBQBfCprQdhYAVAlQ4VPAgA8ARRHhAeNR4mAwCJBEEOkBUgTwBA
+BQ4QNeoLMB4gJUgCIQWQpAYwwA4lfwJBfqAFXpUJQKgFDoBFADAVLUCGA-ABLlUO0AUNPhAeIA5F
+DiUukFsBAUcMESDTCwBMBIBgFQ4QJT4wJVAAAJILIMAdewxANS7wAIkRQAIe8KvtB5IOEDUdMAWw
+HkWECxAAlgYwRT6QcAQQJVAAEBCfCQCXACAAFToGMGUecFsIAFIAcBUOsB1O4DUDCzA_8APYAnAO
+gD4gRQ0gTgCiDjA1QEU_UD4VHv0G8AIAJaAFDhAOMC4gHiUeQA4gFWQQAF0MEAIZD8EVTQ4lPpA1
+HvABRQ4HCBCvewAAlgVgAAUO0A41eQYgMGUfB2E_BR4FcDVVBBGQFwQAchIwJR5Q9gDQBeAeJR7g
+DSUOAIUNlZAEcPAB9Qoe8LLdCeBgRR7gJR4wJR4gVT5QPlwAEFDaAiHwAcEBIEAVUQIAHQcAlQnw
+DAAF8AEljnANJR5FDgVu1QAlDvABFS4QxX7wtKEFEFX9BQFKAAAvCgDqEDE_MA1ZEUABFR6QUQ5Q
+IDUeYA5HDfAJ8AceRR5wDTW_EB61PiXAFT5wTvC5DgVA5QFAHoA1AJcMAHwAMFU_QNkAMB4QHTAI
+gAIVDqAVMCUO-QJQJQ4FQB45DOAXVX6QLiWOZWA_8MolHrYAUh6ARQ7gdQ1QVT4gLgD4CyAOAK4L
+AFYGEKDcBHAeFR4VLkANwwfwAvAWHSVe8A7VLvDRBS6AZSB1JQMAqQPgdS4ALgUADhUNNR018ANy
+D4AOECUeFW5QHXcA8AYTDjVe8BYVfvDTFQ4lHgVAJRDFDtDtA_AADlUuAC4gFQ01DRUAFd8PcB6g
+JQAVHg06ADAFICXbDPABJV7wHw7w1wVQJRAlwCUesO0KIC4AjAdhLgUgFR0lOgDBARUesEUeBQ0V
+TnAdpAUAlQjhFS7w-wQFgA5wVcAlHqAKDqEADgUNRS5AFQ1VoAGgDsAFHS4dFU6AHfwIEFWFFABr
+ElAHHmAOkDsKIC6gBASQLgUNZQ5QBR1FNAAwFQ7ACANgFQ0VPqAddQWAJfAHJU7w-wl8DCCQJdYO
+kJAVAAWABT4NZU8WIg1VNAAQHcgKEA1NFRENqwXwD-AHNS7w-wweUA4lgBXwAEWQNQ0FUBUeHVUu
+QAUdNdsDMMAtBYIDENBmAPAmEBXwBjU_8P8OHmBOYAXwAUUdICU9BR0VMEUdBR0lLjAVDUUO0BUe
+oC0VHgUQDRUO4A0FEDVgC-EMwCU_8AJu8PgOYCVO8Ac1LRUdhR4gNS0FHSUeNQDwALAlHoAFLRUu
+MA0FHuANdUAHQTU_8AGKAhD8AwiA8Ad1TmU_ECUzAFAOMBUdNSwLwFA1HRU_QA0FDgXgVQYLwCUO
+kCUu8AI9BR7w7yERMYAFsBgKsE5QDlUuECUtVQ4gOgCQcC0FHiBFDjU_YRYx0DVAigrwEpAFPvAC
+FQ1VDvDsFX5gDrAFPhAVEBXwAi5wVU4lLUUuADoAgVAtFR4AVY5wmAUgFQDpBBBAmAlQPvACJS6T
+DPAUXgXw4AVuMAXQHXU98AAugFUuADUdVQ4lHUUOUA01DkWOoB1vDSBwDYcMAAkSALsPEFC-EUB_
+8OIu7w-wAw7AHUUQZdAusDUeEDUdJQ1FDVsKUEANZX7gswwwDSUu4Q8AIgQQUD8AYAIVPnAuFaMC
+Eew_AJCgDh1FMGUNFaBBABAAaQFwNQ1VHkAlXlUCMDA9JTAIIB4A1wUA9RNgAhUusB4VtBNg7y0A
+FXAdjA9yJU0VcA0ewD4AAMQIQB4wFT7IAqAQPRVukA01LmAl2AQgLuBKAkDw8UUQhQJwDUUgLnCl
+UK4GYQ0VHgBFDUwD8AUNNR4gFT7wChUOLRVO4B0lHlAdJQIQAXESkOoVLnUABQ5VEEYB8AxgHhCV
+IBUO0B0VDiBlDVUNZQAlLgXwCQ1VHvAJDBFQhxFw0GUe8P8NFTEDQFAeUFXvABDgMgzwAkUNVQ2V
+PvAJDTUu8AcNFQ5gUQkghR4oGfAOITVAHnBFLhUO0A0lHkAlHaUOJU7wCRVekB1FQA00BADuFRBF
+uQlABfD-ILgW0HXgJR5QZR1VLgVO8AhEBpAADhVAHSVONQAJEhAlxA1gsB7w-yAVYAjwDWXgJQ5w
+RR11PgUe8AclDjAONRANFb41cCUOBXDAEUAl8P8dLAIQIJ8PoCUO0CUecEUdZT4BAYAtHlAlHTUu
+UPMYIHAdvQJQHvAEPkDpFiATHfsHQA7wAiXzAcBVDXUuFQ7wBA0FLoD-AWHABVAVDSWBCKAIFR0u
+8P8BbtAd6QUCLAUQ4F4CYQ41DXUeJREAMC6AJU8HIBAdygqwVR7w-xQOwH4NDrBIAwAzFQB2BbAd
+HiUNNQ01DiUe4NMHAFIQog21DvD-FgUu4A36DQC2AVHgFR5ADSwRAi4AUA4FwDUuXgeAA4W_8P8a
+LjDQIkAeNR7A6QoARQUg4BUzDLAeEFUNdQ4VkCU_oHMCkIU_AC7w-yJO1VwQAKUBcQMlDuAlDiAp
+AFAdZR4FYDMBAAMTofACNR7l8P8zHiUoABACKAAAaglAEFUdNQkOEFDEABCwxwDTBS0uBT618P8z
+BQ41oNgAISUQKwCALSVeUAUNJV3WBPMA8AItBZ4QXvD-OGUOcA0VKAAAdALRRS0lXgUgNR4FDZUQ
+DeYWEB35GTBIZR1PDwBaByDgJZEOoFUdNU4FEF5FLkWxEhAAlwJgTvD-T1Vdgw5BHvAAVX8L0C0l
+XhBONS6lDkUgJSCjBZDw-1J1LQUuBR7CESAARSUA8AM1HSVeAD41bvUEPRVe8P9WRX7JBwD2ABAA
+tAwAwgYAixmxzvUBDTVe8P9jFT4cACEFDTkS8QhFDTX_AVCOlX7w-2YlToA1DuAFHQUeABkA8AXe
+0DX_APD-YR8dDxJQJR4tcDUO0GsS0AUdRQ1FrvAKXvD-ZS8cAGBlbSAdDuCxAwCwA-ACRZ7w-4Uf
+HS8ScJUdHgANLtBSAAAZACAlDvMbsYUPHT8S0GUdDh0uzBBARQ1VDm8bEIYzAKDwBCUdFS7ABR1l
+FgDwBF7w-4YMHx0c8AdVHsAVDWUNZQ4DAdOFHAAbHPAJRS6wBR1VFABwhBwQCyzwCrEJ4B1FHZUu
+8P_DHCALLPAMTRXhDTUdlT7w-4AcMAss8A4SAPAEJR0VDWU_8P9_LEALLPAPJS7AVWcEAUwA4Hws
+YAss8BEVHtB1DTUeBhpweixwGyzwEakCMXUdJRMAcHgcoAs88BHCAEHgNR0FXAHxFHUswEyQPfAE
+JR7gNT0lXvD-cyzgLB5QBS0lLfACNQ7gNT01IhxgcDzwAQsdNQsgDZWFBPAD8AA1LVU_8P9sPPAE
+HQU_EOXg2A-0CPAAJT1FPvD-aTzwBw0FngVuNR6wHSUeLQDwA2Q88AY7DQUuTC4sDhUuJS6QHQIK
+ESUcAPQIRwsM8AVs0NsMFR5cHkw_RS4tFQA9NS4fAPAKRiv8BvADm1wVbC58LnUNFR1VPvABJT0l
+DtkA8ARFKwzwF2v8Ay6MHkVtVW7wACUdOgUAfQjyBkUbHPAWS-wFHqweJf0CBS7wACUtNTUA8AUL
+LPAVO-wEPpw_Ff0FBS4FsA0lLRMB8QZETPAVK-wEHrw_FS1FHQVN1YAdBT0ZAPAHDAss8BQr-A09
+ZS01XQVN9QAwLQUtRYYM0P9DLBsM8BMMG-wLHbXAAmHdRa0FLVUbAPAAQhwAKwzwE-wODSUuZQ01
+1gZwHRW9xR0lHS4C8ARCDCAbDPAS-BFODAUNFQ3VDfUQ4QnwAf9BDDALHPAR-BEuHBVN9R-DAfEK
+LvD-QBwwGwzwEPwPTQwdBT2FLsU9Rf0CFRsA8Ao-HEALHPAO-AMFjB2lHZUuZS01DUX9AjUuHQDw
+CT4MYAsc8Awr-AIVXB0VTaWeNT0FHXUd9ekD8AU9DHALHPALO-wEDSUdNQ21ziUN9fYCwDscgAsc
+8Akr-AUVDeIP8FQ1ThXeJQ2VHQUtRW2FDgVe8P86HJALHPAGO-wIJQ0V-g8lDYVN1Q1ljvD-OCyg
+CxzwBDv8DQ0VHgUcHgVsBe4FLWVd9QeO8P83HMALLPABC-wTBS4sHlweFS4sfh2FTSXOVR6PAPAP
+NizQCyzwAPwVBR48Hkw_BVweDD4NBQ11DQU9NR6V3gPwDyALDPABPPAACzzQ-BYFDkwu3B4cLh0l
+ThUtRV4lzkQA8GQfGwzQPPADCzyw-BkOTAUeBbwFDjwOHSVeFR01-hDw-x4bHJBM8AYLXHD8GS5M
+BcwuPB4NFX5lvqWO8P8d-AHwCgsMADxQ-Bsu-AoONY5F-hHw_ivwDSwQLPAVCwwQHFD8HA4F-AsO
+NY41-hHw_TsM8AwcrgHwJhULAAwAHA4g-DtVfiU_Bf4L8PR8CzzwCCxQCxzwFhwADC78PA4lflUu
+FX5AnvD1PGBc8AUsfQHAFxyO-DALXA4VfjVOWQTwBhI8AFyAbLAc8Bfe-CsLbB4VTh0FHRcMABoC
+8AoULFCs8AIc8BQLTAscXvwRPvwQDgweDA4tpgXwDlU_BfD-FQsc8BMs8A8cC2wL-BhO-AMLrD4F
+HXUePgQSFhwA8AAMC-wkXvwBKzwLjBUNJW4aABAXGgBBPPAIOxoAdBs8C2xlXpUYAPEICyzwBkv8
+JV58C3wrDAscCywuHCV_HVUcBBMYIQDwAwNb-CdefBusC0wOPA4Vbh01LgYNIP8ZHwD0BRsc8ACL
+-ChOrAv8Aw4Vbg0lTjUeGwCgLNBb-C1e7AusHhkAEG7eHCAaC_AA9CQsC1Ar-DhOLAtMC0wLDAtc
+zg0ljhUO8P8ZGxzwEQsQCzxA-D4_K0wLHBscGzzeBQ0lngUeALAbAAssHvxDLgwLPI8ARO4MRa46
+APAFEDssfvw_LgwLDAt8DjwuDJ4cNb4cAPAMABvwBxsc8BIbDL78PS4bjAseDN4cRb4VHvD9-gAB
+OgBAvvw_ThkA8RqODD5V3gUe8PwLPPAFGyzwDFt8HhwO-EA_jA48ngwONQ4V3gUu8PoLTB4A8gQI
+W-xRPgwL3H4MJS4V3hUe8PkbGQCxBXv8Uh78Ay4MjgwYAPAE_Btc8AUbPPAAm-xOC2wO-AJeDCsF
+8BSOHC4VHvD3K0ywDw2AC0zQe-xPC5webC6sDgweTA4VfgwLDOYD8Q32OzwOsBxwC0ywDBscG-xe
+Hkw_nA4cHkweBW48IADwDSs8HgygXCAbTJA7-ForHAscDgwePD78BJ4LLC5dFvAN9hs8HgwOoOwe
+UBwb-FwbXB4cLgxOHAv8An4LLNgO8BDw5RsM0AtMLoAb3L78TwscK1w7HAs8Hhx_-AV_GxxOIgDw
+J_QLLOAsTnAr-ADu-EkLTAtcC1xObC58DgwOTE4MfjxOFR7w4ws80DxODA5QC-wFzvxTC1yOXKYA
+8BcODA6MjjxeBR7w4xs8sDtMTkAL-Al_-FIrTK5MDiweTB5sHgxuLCoI8ALw4wtMsBuMLjAb-HIb
+DBs8rnAC00weC0wOHH4cfgUe8OQgAPUiCxwe-G4bTP4AjA48Hgs8Diz_BAXw4xtckBtsDgw_IBsc
+Hvx1XhyOfC4sDoz_AwXw5BsAAD0CkHN_DI6MPhwOfBsAEOUbANBcbhAbHC78c14MbtxeTwAAeQr1
+EOcrDAsskBs8DgxuEAssLvxyHgxu-AReXD4MvgXw6TsbAPEHHD78dx78BA4sXjwuLL7w6is8kBs8
+jhgA8B9zXlwrHD5M-gAsvvDrKywOkBs8Lhw_ECw_-E0bLAv8BDssDtwrBgscLiwOLM48JAAQPCQA
+8BGeACw_-GELHCvMWzxbDJ4cXgweLM7w7BtMDpALTB4Mbh8A8ExfGxwLnA4sOxY7HAssKwyeDH4c
+vvDvGywODB6ACywuDH4QLC78ThsObBu8Hnw7BmssWyweDC4MLiz_AfDvKyw_gAssHhx_KwwLHgv8
+TQv8AwvMuwwbHAsMGxwrPgLwExz_BPDwKxxecAssDiyeOw78aAtM_wAcSwxbHgzOLF7w8DscAPAB
+DP4CHA78YS4MDkz7BDwLHEIE8F-eGxxO8PErHH6A-gX8Yh5cGxZLDAsMa3wrTD4MfkxO8O9LHH5w
+-gb8Yj4sGxZbXBssK8yeDAs8XvDvOzxucB4r-gL8Pwv8F7ucC_x_C1xe8PAbLA4cbmAeGwwL-gL8
+Mhv8HRssuwwbnDucbkwODIoA8RoMDhz_AAv_BvxgDkyrPDsMKwwrrF5cjvDuOwALDiz_CQzO-AYL
+-BgLXOcA8HIuHC5cDns8iywOrG4czvDxOwz_CSzO-Fh_G0xbTAsWO-wB-gfw7TsMCyx_HP4LLA78
+Vz5sCww7BitMGwYL-AX_B-Dra3w_-ABOHF4MLvxiCw4Ma0wb-Ab_B-Dqa-wRHkxu-AQL-BEL-AQO
+-BkrDBs8Dhv8B-4H8Oh7-BtO-AIe-BODAPAyHhwLLvwSazwO-AduLH4cXvDjm-wfLjw7HkwbPvwf
+PhwOHC4MDvwEG6wOWzwO-AYOHD48flwu8NtsS-wlLlwePCtIAECMDgzOKATwifwACxxuLA4MK0wL
+-AYeHC4sjmw_8NIb-BYe-A4_nBs_-AkLzA4sLhy_fA7MHkxuHB6cLvwDDhwePJ58LvDNDEv8F078
+CV6sDvwNC9wOLA4M-gBcDrxOLB4cbpw_-AQOTI6MPvDK-AEe-A9e-AVujAv8HR4c-gL8BA4cHgz_
+AVxO-AAePJ6cTvDJ-AMu-AyO-AGO-CcODP4CuAD-MA4MHix_Gz5MTvwADiyurE7wwfwLTvwB-gaM
+zjwbHvwHC1wbvP4H-An_AAtOPA4MTpwOHN6sbvC9rK5srnz_IeEoITUgwFDbKJBdDfCvDUAN8KkF
+ABOvCABSqQ0QDRAHAPAG8JwN8P--NQ3wpQ1QDQAN8KENMA1AGADgoQ2QDWAN8J4NcA0gDSAJABKw
+BwBAAA3wrQUA4KwN8LAN8KoNkA3wpA1AHAASpQcAIv9nHwARECQAEK9gAPAH--_bDxXwrx7wcQY-
+HQ8S8Cgu8G4GTwoA8Tuobx0PEg7wAz7wDE7QDfBgXx0fEh5AHoBu8B4N8F0WHx1vEi7QbvAJTvAB
+DfBdBh8dfxI_MB5QXvANPvAADfBcPx1vEo5gbvAMTg8A8QB8nmBu8A5O8G1MvlAuAD4LAPAL-g7w
+ED7wKwzwMg4AzjAuAE7wEh4ADvAoPx1UAGAeDoAe8CfaDvF-8BFrLOAN8AQWS-BGDvACHfAOFktM
+DtAN8AMGOwYbLC7wUx3wDQZLTC7QPeBLBhs8TvBSDfAMBls8TnANMC3QKwwrXG4ADhAG8EwN8Axr
+LG5QLSANAA3AK5x_MBtQDvBEDfAMezwOGy5AHfADTP4CEAZbLD7wWhYOKy4LPBYbDE5gC8ALAP4E
+MAYrXF7wRG8B8AQgBltMDgwLXC7QDgsAC0A_IB4g0SWBKzx_8B4e8BaqAQCeAfAjIBseC2webC4A
+XlALIBvADhALAA4QHjA8vvAZbvAVDTANIA0QDXAbDgt8LjyOMCtQC3CBJPAj-gDwFw4QXgAO8BkN
+MA0QDVBbXE4szhvwEQ4wzvAXrvAVDQsQDdAbfP4F8AYLABuA-gNPAPAzGA3QDgAbXiz_BAAe8AcL
+AAsw-gIALvAaPvAbDaAOCzA_AP4LEAvwCf4E8B8u8CELgAs_EP4K8AQMMA4g-gTwHV7QNwDwNiAb
+8AYM-gbwBSwADDD_BPAeXsAe8AwLgA5wDqAMIE4gPvABHlwuDADOFisM8BpeAF7wFA7wLDwAbP4B
+qwzwFW4gXsAOEOwj8FnwKCwuLP4CBosMG7wADvAFLiC_AB7wFl7AC-AEBgsQOw4LDjBs-gaL7BsM
+PvAE-gLgDvAHbjBu4A5AFiscXhBs-gIGm-wAfvAFDgDu8Bj_ATBOMDseEDscnjz_AxZLrP4E8AMe
+AJ4Abo8Y8AgB7hA_EC4gKww_C-4WW5z_CWAecP4AwAkm-AkD-gpLDG4c-hMbPP4UEB4QPmDu8AFO
+8ATAA1QxLjMwNgIAA8kDVTAuNDYzAgASNNQDOzF9LCw9H-AfPQsMBQQPMwCKwHIXDx3wAB3gHeAd
+0AIAbw0fFcAeYEgAH-AFUwcPF-AADvAADx3gDQ8N0BzgHNACAF8MHxXAG1AAIJA1B-AADxfgDuCf
+AABRACANDAMAD1UAKzM4B_BUAKPgDw3gDdAPHQ3Q9wBPLxWwHFIAIMA6DxfQB_AO0B8d0A9QAA4F
+AG8d0A1PFZBcACHAWw8XDx3AB9AH0A8XTQBhDcAODdAOUgA-XxWAUgAh5HsPFx8doBfADxcNwA8d
+TQA-bxVwTQAh8gGZFw8XsA4NEA8dkAwNMAyAlwAPlwEd-wEEBAQADhAPFx4PEh4dEA0APgAfrw8X
+Dw4QHg8SAC0-ACEQED8AEAA-AB8OfwAiAD8AfyAODxIQHUB8ACgPPQAgEEA9AH8QDg8SDiANPQAh
+QCAfDgC4AA95ACQ-Hg8SrgEmQA8SAB8FAAAKAB9AQwAhXxAHHg8OLwIkfwcPFxAeDw4uAiSPBw8X
+AAcODw4uAiR_Bw8XIA4PDi0CD3sAFAC5AA8sAiEA9QA-Dg8OKwIiUAcgHxcAtQAPdwAjPx4PDqgB
+JUAPDgAfBQAACgAfQEIAIJ8QJw8XBy4QDw5-ACBvFxAHHxcAPQAjXxAXABcPPQAlIRcgNgEfQHYA
+IQCzAA86ACARQO0ALyAOOQAeATgAPxAOUM0CID8QFw_sAFsv8AAzAP_BD7UKEB83ZAAdHjdiAA8x
+AP--BQ5MAg_IAf----_tDzEA-----------------------------------------_5QbT03fX0=
 :: label.qoi
 b64$cW9pZgAAAeAAAAEOBAH_g3ac-cD_vZrf0xDHB9gQ-f33B-3JEP396gfWEMEH3RD9-fYH-csQ
 -f3oB9cQB98QwAfBEP396wf90hDAB8MQ-f3fB-3DEP395Qf93hD9-dUH-c8Q-f3eB-3iEOsHxRD9
@@ -5916,14 +5954,14 @@ BwPkB8Q6yAPbOsEDxTrBA846A8k6A8A6xAPFEP39-dU6yBADxRADwzrABxADwAcQOsQDwDoDwBDA
 A8EQwAPDEMEDyxADwRADxRDAAxAD3gfDOgPFOsAD4QfAOsID5jrAA8c6wAPXOsUDyRD9-f3ROskD
 yzrDAwcQA8AQwAPCOsUDwxADxRAD2BADxwAAAAAAAAAB
 :: map/.info.pod
---[[pod,created="2026-01-15 17:19:56",modified="2026-03-03 11:18:24"]]
+--[[pod,created="2026-01-15 17:19:56",modified="2026-03-03 21:31:20"]]
 :: map/0.map
 b64$LS1bW3BvZCxjcmVhdGVkPSIyMDI1LTAxLTE3IDEwOjM1OjQ4Iixtb2RpZmllZD0iMjAyNi0w
 MS0yNiAyMjo0MTowMCIscmV2aXNpb249M11dbHo0AE4AAABSAAAA8Rx7e2JtcD1weHUATIAgIAD-
 AAD---8DLGhpZGRlbj1mYWxzZSxwYW5feD0wCADSeT0wLHRpbGVfaD0xNgoAEHcKAKB6b29tPTAu
 NX19
 :: sfx/.info.pod
---[[pod,created="2026-01-15 17:19:56",modified="2026-03-03 11:18:24"]]
+--[[pod,created="2026-01-15 17:19:56",modified="2026-03-03 21:31:20"]]
 :: sfx/0.sfx
 b64$LS1bW3BvZCxjcmVhdGVkPSIyMDI1LTA3LTMxIDA4OjMwOjI4Iixtb2RpZmllZD0iMjAyNS0w
 Ny0zMSAwODozMDoyOCIscmV2aXNpb249MF1dbHo0AKAAAAALCgAA-zBweHUAAygAAAQABA9AEAIO
