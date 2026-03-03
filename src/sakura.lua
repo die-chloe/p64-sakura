@@ -13,12 +13,20 @@ noise_scale_grassx         = 1
 noise_scale_grassy         = .5
 
 frame                      = 0
+draw_grass                 = true
+draw_leaves                = true
 
 i8MAX                      = 0x7f
 i16MAX                     = 0x7fff
 i32MAX                     = 0x7fffffff
 
 screen_to_i16              = i16MAX / 480
+
+
+
+--Debug
+cpu     = 0
+outline = "\f7\^o1ff"
 
 --regen = true
 
@@ -31,15 +39,25 @@ function _init()
 
 		add_particles(1, true)
 
-		for i = 0, 60 do
-			_update()
+		for i = 0, 120 do
+			update_particles()
 		end
 
 		init_mouse()
 	end
-end
 
-grass_wind = 0
+	background = userdata("u8", 480, 270)
+	draw_buffer = userdata("u8", 480, 270)
+
+	set_draw_target(background)
+	spr(1)
+	poke(0x5509, 0x7f)
+	spr(2, 0, 0)
+	poke(0x5509, 0x3f)
+
+
+	cpu_new = stat(1)
+end
 
 function _update()
 	if (regen) then
@@ -50,19 +68,26 @@ function _update()
 
 	if (frame % 2) == 0 then
 		noise_x -= 1
+
+		update_leaves()
+		draw_grass = true
+	else
+		update_grass()
+		draw_leaves = true
 	end
 
 	if (frame % 32) == 0 then
 		noise_y += 1
+		cpu_max, cpu_min = 0, 1
 	end
 
 	noise_x %= noise_w
 	noise_y %= noise_h
 
 	noise:blit(noise_sample,
-			   noise_x, noise_y, -- src x,y
-			   0, 0,    -- dst x,y
-			   noise_w, noise_h)
+		noise_x, noise_y, -- src x,y
+		0, 0,       -- dst x,y
+		noise_w, noise_h)
 	update_particles()
 
 	update_mouse()
@@ -71,31 +96,56 @@ function _update()
 end
 
 function _draw()
-	cls()
-	spr(1, 0, 0)
+	set_draw_target(draw_buffer)
 
+	if (draw_leaves) then
+		clip(0, 0, 480, 168)
+		blit(background)
 
-	update_leaves()
-	update_grass()
+		poke(0x550a, 0x7f)
+		spr(leaves, 0, bg_leaves)
+		draw_particles()
+		poke(0x550a, 0x3f)
 
-	spr(leaves, 0, bg_leaves)
+		spr(leaves, bg_leaves * leaves:width(), fg_leaves)
+		draw_leaves = false
+	end
 
-	draw_particles()
+	if (draw_grass) then
+		clip(0, 168, 480, 102)
+		blit(background)
 
-	spr(2, 0, 0)
+		poke(0x550a, 0x7f)
+		draw_particles()
+		poke(0x550a, 0x3f)
 
-	spr(leaves, bg_leaves * leaves:width(), fg_leaves)
+		spr(grass)
 
-	spr(grass)
-
-	spr(3,0,190)
+		spr(3, 0, 190)
+		draw_grass = false
+	end
 
 	draw_mouse()
 
-	--[[
-	print(stat(1), 4, 16, 7)
-	print(string.format("%.3fMB", stat(0) / 1000000))
-	print(stat(7) .. "fps")
+
+	clip()
+	set_draw_target()
+	blit(draw_buffer)
+
+
+	--DIAGNOSTICS
+
+	cpu_old = cpu_new
+	cpu_new = stat(1)
+	cpu_max = max(cpu_max, cpu_new)
+	cpu_min = min(cpu_min, cpu_new)
+	cpu = (cpu_old + cpu_new) / 2
+
+	---[[
+	print(outline .. string.format("CPU (average last 2 f): %.1f%%", cpu * 100), 4, 16)
+	print(outline .. string.format("CPU (max/min last 32f): %.1f%%/%.1f%%", cpu_max * 100, cpu_min * 100))
+	print(outline .. string.format("RAM: %.3fMB", stat(0) / 1000000))
+	print(outline .. stat(7) .. "fps")
 	--]]
 end
 
@@ -133,19 +183,19 @@ function init_leaves()
 	bg_leaves = leaf_meta.bgLeaves
 
 	leaf_data:mul(1 / screen_to_i16, true,
-				  1, --source offset
-				  1, --dest offset
-				  2, --length
-				  leaf_data:width(),
-				  leaf_data:width(),
-				  leaf_data:height())
+		1, --source offset
+		1, --dest offset
+		2, --length
+		leaf_data:width(),
+		leaf_data:width(),
+		leaf_data:height())
 
 	local leaf_pos = userdata("f64", 2, leaf_data:height())
 	local leaf_noise_pos = userdata("f64", 2, leaf_data:height())
 	leaf_data:blit(leaf_pos,
-				   1, 0, --src x,y
-				   0, 0, --dst x,y
-				   2, leaf_data:height())
+		1, 0, --src x,y
+		0, 0, --dst x,y
+		2, leaf_data:height())
 
 	leaf_pos:mul(1 / noise_scale_leaves, leaf_noise_pos)
 
@@ -159,23 +209,23 @@ function init_leaves()
 		local angle = leaf_data:get(3, i) / i16MAX
 
 		leaf_vec:set(0, i,
-					 cos(angle),
-					 sin(angle))
+			cos(angle),
+			sin(angle))
 	end
 
 	leaf_noise_ids = userdata("i32", 1, leaf_noise_pos:height())
 	local leaf_noise_idx = userdata("i32", 1, leaf_noise_pos:height())
 	leaf_noise_pos:blit(leaf_noise_idx,
-						0, 0, --src x,y
-						0, 0, --dst x,y
-						1,
-						leaf_noise_pos:height())
+		0, 0, --src x,y
+		0, 0, --dst x,y
+		1,
+		leaf_noise_pos:height())
 
 	leaf_noise_pos:blit(leaf_noise_ids,
-						1, 0,  --src x,y
-						0, 0,  --dst x,y
-						1,     --width
-						leaf_noise_pos:height()) --height
+		1, 0,              --src x,y
+		0, 0,              --dst x,y
+		1,                 --width
+		leaf_noise_pos:height()) --height
 
 	leaf_noise_ids:mul(noise_w, true)
 	leaf_noise_ids:add(leaf_noise_idx, true)
@@ -186,15 +236,15 @@ function init_leaves()
 
 
 	leaf_pos:blit(leaf_cursor_idx,
-				  0, 0, --src x,y
-				  0, 0, --dst x,y
-				  1,
-				  leaf_pos:height())
+		0, 0, --src x,y
+		0, 0, --dst x,y
+		1,
+		leaf_pos:height())
 	leaf_pos:blit(leaf_cursor_ids,
-				  1, 0,  --src x,y
-				  0, 0,  --dst x,y
-				  1,     --width
-				  leaf_pos:height()) --height
+		1, 0,        --src x,y
+		0, 0,        --dst x,y
+		1,           --width
+		leaf_pos:height()) --height
 
 	leaf_cursor_ids:mul(480, true)
 	leaf_cursor_ids:add(leaf_cursor_idx, true)
@@ -211,8 +261,7 @@ function update_leaves()
 
 	leaf_displace:mul(leaf_noise_strength, true)
 
-	local leaf_cursor_displace_x = (cursor_effect_sample:take(leaf_cursor_ids))
-	leaf_cursor_displace_x = leaf_cursor_displace_x:convert("f64")
+	local leaf_cursor_displace_x = cursor_effect_sample:take(leaf_cursor_ids)
 	local leaf_cursor_displace_y = leaf_cursor_displace_x:copy()
 
 
@@ -223,19 +272,19 @@ function update_leaves()
 	leaf_dy = userdata("f64", 1, leaf_data:height())
 
 	leaf_data:blit(leaves,
-				   0, 0,      --src x,y
-				   0, 0,      --dst x,y
-				   3, leaf_data:height()) --width,height
+		0, 0,            --src x,y
+		0, 0,            --dst x,y
+		3, leaf_data:height()) --width,height
 
 	leaf_vec:blit(leaf_dx,
-				  0, 0, --src x,y
-				  0, 0, --dst x,y
-				  1, leaf_vec:height())
+		0, 0, --src x,y
+		0, 0, --dst x,y
+		1, leaf_vec:height())
 
 	leaf_vec:blit(leaf_dy,
-				  1, 0, --src x,y
-				  0, 0, --dst x,y
-				  1, leaf_vec:height())
+		1, 0, --src x,y
+		0, 0, --dst x,y
+		1, leaf_vec:height())
 
 	leaf_dx:mul(leaf_displace, true)
 	leaf_dy:mul(leaf_displace, true)
@@ -244,35 +293,35 @@ function update_leaves()
 	leaf_dy:add(leaf_cursor_displace_y, true)
 
 	leaves:add(leaf_sprite, true,
-			   0, 0,  --src,dst offset
-			   1,     --length
-			   1,     --src stride
-			   leaves:width(), --dst stride
-			   leaves:height())
+		0, 0,     --src,dst offset
+		1,        --length
+		1,        --src stride
+		leaves:width(), --dst stride
+		leaves:height())
 
 	leaves:add(leaf_dx, true,
-			   0, 1,  --src,dst offset
-			   1,     --length
-			   1,     --src stride
-			   leaves:width(), --dst stride
-			   leaves:height())
+		0, 1,     --src,dst offset
+		1,        --length
+		1,        --src stride
+		leaves:width(), --dst stride
+		leaves:height())
 	leaves:add(leaf_dy, true,
-			   0, 2,  --src,dst offset
-			   1,     --length
-			   1,     --src stride
-			   leaves:width(), --dst stride
-			   leaves:height())
+		0, 2,     --src,dst offset
+		1,        --length
+		1,        --src stride
+		leaves:width(), --dst stride
+		leaves:height())
 end
 
 function init_grass()
 	grass_data = unpod(fetch("assets/grass_data.pod")):convert("f64")
 	grass_data:mul(1 / screen_to_i16, true,
-				   1, --source offset
-				   1, --dest offset
-				   2, --length
-				   grass_data:width(),
-				   grass_data:width(),
-				   grass_data:height())
+		1, --source offset
+		1, --dest offset
+		2, --length
+		grass_data:width(),
+		grass_data:width(),
+		grass_data:height())
 
 	grass = userdata("f64", 5, grass_data:height())
 	grass = grass_data:copy()
@@ -281,20 +330,20 @@ function init_grass()
 	grass_noise_ids = userdata("f64", 1, grass_data:height())
 
 	grass_data:blit(grass_noise_idx,
-					1, 0, --src x,y
-					0, 0,
-					1,
-					grass_data:height())
+		1, 0, --src x,y
+		0, 0,
+		1,
+		grass_data:height())
 	grass_noise_idx:mul(1 / noise_scale_grassx, true)
 	grass_noise_idx = grass_noise_idx:convert("i32")
 	grass_noise_idx:mutate("i32", grass_data:height(), 1)
 	grass_noise_idx:mod(noise_w, true)
 
 	grass_data:blit(grass_noise_ids,
-					2, 0, --src x,y
-					0, 0,
-					1,
-					grass_data:height())
+		2, 0, --src x,y
+		0, 0,
+		1,
+		grass_data:height())
 	grass_noise_ids:mul(1 / noise_scale_grassy, true)
 	grass_noise_ids = grass_noise_ids:convert("i32")
 	grass_noise_ids:mutate("i32", grass_data:height(), 1)
@@ -312,10 +361,10 @@ function update_grass()
 	grass_delta:max(-3, true)
 
 	grass_data:add(grass_delta, grass,
-				   0,       --src offset
-				   0,       --dst offset
-				   1,       --length
-				   1,       --src stride
-				   grass_data:width(), --dst stride
-				   grass_data:height()) --num elements
+		0,             --src offset
+		0,             --dst offset
+		1,             --length
+		1,             --src stride
+		grass_data:width(), --dst stride
+		grass_data:height()) --num elements
 end
