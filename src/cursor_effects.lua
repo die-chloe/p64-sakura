@@ -2,8 +2,8 @@ cursor = {x = 0, y = 0, dx = 0, dy = 0}
 
 cursor_leaf_effect_strength = 1/32
 
-cursor_effect = userdata("u8", 31, 31)
-cursor_effect_sample = userdata("u8", 480, 270)
+cursor_effect = userdata("f64", 31, 31)
+cursor_effect_sample = userdata("f64", 480, 270)
 cursor_effect_max_speed = 8
 cursor_effect_min_speed = 1.5
 function init_mouse()
@@ -33,7 +33,7 @@ function update_mouse()
 
 	
 	
-	cursor_effect_sample = userdata("u8", 480, 270)
+	cursor_effect_sample = userdata("f64", 480, 270)
 	blit(cursor_effect, cursor_effect_sample,
 		 0, 0,    --src x,y
 		new_mouse_x - ((new_mouse_x - cursor.x)//2) - 15, --dst x
